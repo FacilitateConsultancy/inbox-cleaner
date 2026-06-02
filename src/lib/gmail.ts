@@ -19,6 +19,74 @@ async function gFetch(path: string, token: string, opts: RequestInit = {}): Prom
   return res;
 }
 
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+async function fetchGmailBatch(
+  token: string,
+  items: { id: string }[],
+  withSubject: boolean,
+  delayMs: number
+): Promise<EmailMessage[]> {
+  const messages: EmailMessage[] = [];
+  const headers = withSubject
+    ? "metadataHeaders=From&metadataHeaders=Date&metadataHeaders=Subject"
+    : "metadataHeaders=From&metadataHeaders=Date";
+
+  for (let i = 0; i < items.length; i += 100) {
+    if (i > 0 && delayMs > 0) await sleep(delayMs);
+    const chunk = items.slice(i, i + 100);
+    const batchBody = chunk.map((m, j) => [
+      `--batch_boundary`,
+      `Content-Type: application/http`,
+      `Content-ID: <${j}>`,
+      ``,
+      `GET /gmail/v1/users/me/messages/${m.id}?format=metadata&${headers} HTTP/1.1`,
+      ``,
+    ].join("\r\n")).join("\r\n") + "\r\n--batch_boundary--";
+
+    const batchRes = await fetch("https://www.googleapis.com/batch/gmail/v1", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "multipart/mixed; boundary=batch_boundary",
+      },
+      body: batchBody,
+    });
+
+    const raw = await batchRes.text();
+    const parts = raw.split(/--[^\r\n]+/).filter(p => p.includes("{"));
+    for (const part of parts) {
+      const jsonMatch = part.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) continue;
+      try {
+        const msg = JSON.parse(jsonMatch[0]);
+        if (!msg.id) continue;
+        const hdrs: { name: string; value: string }[] = msg.payload?.headers ?? [];
+        const get = (n: string) => hdrs.find(h => h.name.toLowerCase() === n.toLowerCase())?.value ?? "";
+        const from = get("From");
+        const date = get("Date");
+        const subject = get("Subject");
+        const emailMatch = from.match(/<([^>]+)>/) ?? from.match(/(\S+@\S+)/);
+        const nameMatch = from.match(/^([^<]+)</);
+        messages.push({
+          id: msg.id,
+          subject,
+          receivedDateTime: date ? new Date(date).toISOString() : new Date().toISOString(),
+          sender: {
+            emailAddress: {
+              name: nameMatch ? nameMatch[1].trim() : (emailMatch ? emailMatch[1] : from),
+              address: emailMatch ? emailMatch[1] : from,
+            },
+          },
+        });
+      } catch {
+        // skip malformed
+      }
+    }
+  }
+  return messages;
+}
+
 export async function fetchGmailMessages(token: string): Promise<EmailMessage[]> {
   const messages: EmailMessage[] = [];
   let pageToken: string | undefined;
@@ -32,64 +100,25 @@ export async function fetchGmailMessages(token: string): Promise<EmailMessage[]>
     const items: { id: string }[] = listData.messages ?? [];
     if (items.length === 0) break;
 
-    // Batch fetch metadata for up to 100 messages at a time
-    for (let i = 0; i < items.length; i += 100) {
-      const chunk = items.slice(i, i + 100);
-      const batchBody = chunk.map((m, j) => [
-        `--batch_boundary`,
-        `Content-Type: application/http`,
-        `Content-ID: <${j}>`,
-        ``,
-        `GET /gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Date HTTP/1.1`,
-        ``,
-      ].join("\r\n")).join("\r\n") + "\r\n--batch_boundary--";
-
-      const batchRes = await fetch("https://www.googleapis.com/batch/gmail/v1", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/mixed; boundary=batch_boundary",
-        },
-        body: batchBody,
-      });
-
-      const raw = await batchRes.text();
-      // Parse each part from the multipart response
-      const parts = raw.split(/--[^\r\n]+/).filter(p => p.includes("{"));
-      for (const part of parts) {
-        const jsonMatch = part.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) continue;
-        try {
-          const msg = JSON.parse(jsonMatch[0]);
-          if (!msg.id) continue;
-          const headers: { name: string; value: string }[] = msg.payload?.headers ?? [];
-          const get = (n: string) => headers.find(h => h.name.toLowerCase() === n.toLowerCase())?.value ?? "";
-          const from = get("From");
-          const date = get("Date");
-          const emailMatch = from.match(/<([^>]+)>/) ?? from.match(/(\S+@\S+)/);
-          const nameMatch = from.match(/^([^<]+)</);
-          messages.push({
-            id: msg.id,
-            subject: "",
-            receivedDateTime: date ? new Date(date).toISOString() : new Date().toISOString(),
-            sender: {
-              emailAddress: {
-                name: nameMatch ? nameMatch[1].trim() : (emailMatch ? emailMatch[1] : from),
-                address: emailMatch ? emailMatch[1] : from,
-              },
-            },
-          });
-        } catch {
-          // skip malformed
-        }
-      }
-    }
+    const batch = await fetchGmailBatch(token, items, false, 0);
+    messages.push(...batch);
 
     pageToken = listData.nextPageToken;
     if (!pageToken) break;
   }
 
   return messages;
+}
+
+/** Rate-limited fetch with subjects — for intelligence analysis. */
+export async function fetchGmailMessagesLimited(token: string, limit: number): Promise<EmailMessage[]> {
+  const params = new URLSearchParams({ maxResults: String(Math.min(limit, 500)), labelIds: "INBOX" });
+  const listRes = await gFetch(`/messages?${params}`, token);
+  const listData = await listRes.json();
+  const items: { id: string }[] = (listData.messages ?? []).slice(0, limit);
+  if (items.length === 0) return [];
+  // 200ms delay between batches of 100 to stay within rate limits
+  return fetchGmailBatch(token, items, true, 200);
 }
 
 export async function batchDeleteGmailMessages(

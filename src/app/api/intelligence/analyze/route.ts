@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { fetchInboxMessages } from "@/lib/graph";
-import { fetchGmailMessages } from "@/lib/gmail";
+import { fetchGmailMessagesLimited } from "@/lib/gmail";
 import { analyseMessages } from "@/lib/classify";
 
 export async function GET() {
@@ -11,8 +11,9 @@ export async function GET() {
   }
 
   try {
+    // Gmail uses a smaller limit + delays to avoid rate limit errors
     const messages = session.provider === "google"
-      ? await fetchGmailMessages(session.accessToken)
+      ? await fetchGmailMessagesLimited(session.accessToken, 500)
       : await fetchInboxMessages(session.accessToken);
 
     const raw = messages.map(m => ({
