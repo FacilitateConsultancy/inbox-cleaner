@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import type { IntelligenceResult, IntelligenceRule, CategoryGroup, EmailCategory, RuleAction } from "@/types";
+import type { IntelligenceResult, IntelligenceRule, CategoryGroup, EmailCategory, RuleAction, SenderGroup } from "@/types";
 
 const B = {
   navy: "#1C213E", navyLight: "#2E3662", teal: "#3B8590", tealLight: "#7BC7CC",
@@ -45,7 +45,7 @@ interface ApplyDoneResult {
   totalFailed: number;
 }
 
-export function IntelligenceScreen() {
+export function IntelligenceScreen({ senders }: { senders: SenderGroup[] }) {
   const [stage, setStage] = useState<Stage>("idle");
   const [result, setResult] = useState<IntelligenceResult | null>(null);
   const [rules, setRules] = useState<IntelligenceRule[]>([]);
@@ -56,7 +56,11 @@ export function IntelligenceScreen() {
     setStage("loading");
     setError(null);
     try {
-      const res = await fetch("/api/intelligence/analyze");
+      const res = await fetch("/api/intelligence/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ senders }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Analysis failed");
       setResult(data);

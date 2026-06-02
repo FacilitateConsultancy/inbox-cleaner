@@ -188,30 +188,77 @@ interface RawMessage {
   senderName: string;
 }
 
-export function analyseMessages(messages: RawMessage[]): IntelligenceResult {
-  // Group by category
-  const catMap = new Map<EmailCategory, {
-    ids: string[];
-    senders: Map<string, string>; // email → name
-    confidences: number[];
-  }>();
+interface FullSender {
+  email: string;
+  name: string;
+  messageIds: string[];
+}
+
+/**
+ * Classify a sample of messages, then expand message IDs to the full sender
+ * dataset. This means rules cover ALL emails from classified senders — not
+ * just the sampled subset.
+ */
+export function analyseMessages(messages: RawMessage[], allSenders?: FullSender[]): IntelligenceResult {
+  // Build a sender → category map from the sample
+  const senderCategoryVotes = new Map<string, { votes: Map<EmailCategory, number>; confidences: number[]; name: string }>();
 
   for (const msg of messages) {
     const { category, confidence } = classifySubject(msg.subject);
+    if (category === "Other") continue;
+    if (!senderCategoryVotes.has(msg.senderEmail)) {
+      senderCategoryVotes.set(msg.senderEmail, { votes: new Map(), confidences: [], name: msg.senderName });
+    }
+    const entry = senderCategoryVotes.get(msg.senderEmail)!;
+    entry.votes.set(category, (entry.votes.get(category) ?? 0) + 1);
+    entry.confidences.push(confidence);
+  }
+
+  // For each sender, pick the winning category
+  const senderCategory = new Map<string, { category: EmailCategory; confidence: number; name: string }>();
+  for (const [email, { votes, confidences, name }] of senderCategoryVotes.entries()) {
+    const topCat = ([...votes.entries()].sort((a, b) => b[1] - a[1])[0])?.[0];
+    if (!topCat) continue;
+    const avgConf = Math.round(confidences.reduce((a, b) => a + b, 0) / confidences.length);
+    senderCategory.set(email, { category: topCat, confidence: avgConf, name });
+  }
+
+  // Build category groups — use full sender messageIds if available
+  const catMap = new Map<EmailCategory, {
+    ids: string[];
+    senders: Map<string, string>;
+    confidences: number[];
+  }>();
+
+  const allSenderMap = new Map<string, FullSender>();
+  if (allSenders) {
+    for (const s of allSenders) allSenderMap.set(s.email.toLowerCase(), s);
+  }
+
+  for (const [email, { category, confidence, name }] of senderCategory.entries()) {
     if (!catMap.has(category)) {
       catMap.set(category, { ids: [], senders: new Map(), confidences: [] });
     }
     const entry = catMap.get(category)!;
-    entry.ids.push(msg.id);
-    entry.senders.set(msg.senderEmail, msg.senderName);
+    entry.senders.set(email, name);
     entry.confidences.push(confidence);
+
+    // Use full sender's message IDs if we have them, otherwise fall back to sampled IDs
+    const fullSender = allSenderMap.get(email);
+    if (fullSender) {
+      entry.ids.push(...fullSender.messageIds);
+    } else {
+      // fallback: add sampled IDs for this sender
+      for (const msg of messages) {
+        if (msg.senderEmail === email) entry.ids.push(msg.id);
+      }
+    }
   }
 
   const categories: CategoryGroup[] = [];
   const suggestedFoldersSet = new Set<string>();
 
   for (const [category, data] of catMap.entries()) {
-    if (category === "Other") continue; // skip Other from display unless significant
     const avgConfidence = Math.round(
       data.confidences.reduce((a, b) => a + b, 0) / data.confidences.length
     );
@@ -229,10 +276,8 @@ export function analyseMessages(messages: RawMessage[]): IntelligenceResult {
     });
   }
 
-  // Sort by count descending
   categories.sort((a, b) => b.count - a.count);
 
-  // Build rules
   const suggestedRules: IntelligenceRule[] = categories
     .filter(c => c.suggestedAction !== "keep")
     .map((c, i) => ({

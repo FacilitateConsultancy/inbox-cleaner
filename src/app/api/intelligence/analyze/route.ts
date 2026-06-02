@@ -1,17 +1,22 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { fetchInboxMessages } from "@/lib/graph";
 import { fetchGmailMessagesLimited } from "@/lib/gmail";
 import { analyseMessages } from "@/lib/classify";
+import type { SenderGroup } from "@/types";
 
-export async function GET() {
+export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.accessToken) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Client sends its full sender list so we can expand message IDs
+  const body = await req.json().catch(() => ({}));
+  const allSenders: SenderGroup[] = body.senders ?? [];
+
   try {
-    // Gmail uses a smaller limit + delays to avoid rate limit errors
+    // Sample messages for subject-based classification
     const messages = session.provider === "google"
       ? await fetchGmailMessagesLimited(session.accessToken, 500)
       : await fetchInboxMessages(session.accessToken);
@@ -23,7 +28,14 @@ export async function GET() {
       senderName: m.sender?.emailAddress?.name ?? "Unknown",
     }));
 
-    const result = analyseMessages(raw);
+    // Pass full sender data so rules cover ALL emails, not just the sample
+    const fullSenders = allSenders.map(s => ({
+      email: s.email.toLowerCase(),
+      name: s.name,
+      messageIds: s.messageIds,
+    }));
+
+    const result = analyseMessages(raw, fullSenders.length > 0 ? fullSenders : undefined);
     return NextResponse.json(result);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
