@@ -1,36 +1,89 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Inbox Cleaner
 
-## Getting Started
+A Next.js 16 app that connects to your Outlook / Hotmail inbox via **Microsoft Graph API**, groups emails by sender, and lets you bulk-delete entire sender threads with a confirmation step before anything is touched.
 
-First, run the development server:
+---
+
+## Quick start
 
 ```bash
+# 1. Install dependencies (already done if you followed setup)
+npm install
+
+# 2. Copy the env template
+cp .env.local.example .env.local
+
+# 3. Fill in the Azure credentials (see below), then generate a secret:
+openssl rand -base64 32   # paste as AUTH_SECRET in .env.local
+
+# 4. Run
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# → http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Azure App Registration (step by step)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 1. Create the app
 
-## Learn More
+1. Open [portal.azure.com](https://portal.azure.com) and sign in.
+2. Search for **"App registrations"** → **New registration**.
+3. Fill in:
+   - **Name:** `Inbox Cleaner`
+   - **Supported account types:** *Personal Microsoft accounts only*
+   - **Redirect URI:** `Web` → `http://localhost:3000/api/auth/callback/microsoft-entra-id`
+4. Click **Register**.
 
-To learn more about Next.js, take a look at the following resources:
+### 2. Copy your Client ID
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+On the app overview page, copy **Application (client) ID** → paste as `AZURE_AD_CLIENT_ID`.  
+Leave `AZURE_AD_TENANT_ID=consumers` for personal Outlook/Hotmail accounts.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 3. Create a client secret
 
-## Deploy on Vercel
+1. Left sidebar → **Certificates & secrets** → **Client secrets** → **New client secret**.
+2. Set any description and expiry (24 months recommended).
+3. **Immediately copy the Value** (shown only once) → paste as `AZURE_AD_CLIENT_SECRET`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 4. Add API permissions
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Left sidebar → **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated permissions**.
+2. Add:
+   - `Mail.Read`
+   - `Mail.ReadWrite` ← required for deletion
+   - `offline_access` ← for token refresh
+3. Click **Add permissions**. Consent is prompted at first sign-in.
+
+---
+
+## Environment variables
+
+| Variable | Description |
+|---|---|
+| `AZURE_AD_CLIENT_ID` | App registration → Application (client) ID |
+| `AZURE_AD_CLIENT_SECRET` | Client secret value |
+| `AZURE_AD_TENANT_ID` | `consumers` for personal accounts, or your tenant GUID |
+| `AUTH_SECRET` | Random secret (`openssl rand -base64 32`) |
+| `NEXTAUTH_URL` | Base URL, e.g. `http://localhost:3000` |
+
+---
+
+## How it works
+
+| Step | What happens |
+|---|---|
+| **Scan** | Fetches up to 2,000 inbox messages via Graph API (paginated, 100/page) |
+| **Group** | Groups by sender email address, sorted by message count |
+| **Review** | Toggle each sender as **Keep** or **Remove** (or bulk-decide all undecided) |
+| **Confirm** | Full list of senders + email counts shown before anything is deleted |
+| **Delete** | Batch DELETE requests to Graph API (20 per batch) |
+
+---
+
+## Tech stack
+
+- **Next.js 16** — App Router, React Server Components
+- **TypeScript** + **Tailwind CSS v4**
+- **NextAuth.js v5** — OAuth with Microsoft Entra ID provider
+- **Microsoft Graph API** — paginated inbox fetch + `$batch` delete
