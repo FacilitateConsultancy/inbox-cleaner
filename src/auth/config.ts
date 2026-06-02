@@ -1,15 +1,14 @@
 import type { NextAuthConfig } from "next-auth";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 
-// Microsoft's consumer accounts (Hotmail/Outlook.com) use the string
-// "consumers" in the authorization/token URLs, but the iss claim in returned
-// JWTs always contains the real consumer-tenant GUID below. We must use the
-// GUID in the issuer URL so the OIDC issuer check passes.
-// Work/school accounts: set AZURE_AD_TENANT_ID to your directory (tenant) GUID.
+// "consumers" → personal Hotmail/Outlook.com accounts only (uses real GUID for issuer check)
+// "common"    → personal + work/school accounts (issuer varies per tenant, so we skip strict check)
+// any GUID    → single specific tenant
 const CONSUMER_TENANT_GUID = "9188040d-6c67-4c5b-b112-36a304b66dad";
 const rawTenant = process.env.AZURE_AD_TENANT_ID ?? "consumers";
-const tenantId =
-  rawTenant === "consumers" ? CONSUMER_TENANT_GUID : rawTenant;
+
+const isCommon = rawTenant === "common";
+const tenantId = rawTenant === "consumers" ? CONSUMER_TENANT_GUID : rawTenant;
 const issuer = `https://login.microsoftonline.com/${tenantId}/v2.0`;
 
 export const authConfig: NextAuthConfig = {
@@ -17,7 +16,8 @@ export const authConfig: NextAuthConfig = {
     MicrosoftEntraID({
       clientId: process.env.AZURE_AD_CLIENT_ID!,
       clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
-      issuer,
+      // With "common", skip issuer check — each org returns its own tenant GUID
+      ...(isCommon ? {} : { issuer }),
       authorization: {
         params: {
           scope:
