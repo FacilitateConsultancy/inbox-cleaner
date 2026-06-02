@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { fetchInboxMessages } from "@/lib/graph";
+import { fetchGmailMessages } from "@/lib/gmail";
 import type { SenderGroup } from "@/types";
 
 export async function GET() {
@@ -10,30 +11,23 @@ export async function GET() {
   }
 
   try {
-    const messages = await fetchInboxMessages(session.accessToken);
+    const messages = session.provider === "google"
+      ? await fetchGmailMessages(session.accessToken)
+      : await fetchInboxMessages(session.accessToken);
 
     const map = new Map<string, SenderGroup>();
     for (const msg of messages) {
-      const email =
-        msg.sender?.emailAddress?.address?.toLowerCase() ?? "unknown";
+      const email = msg.sender?.emailAddress?.address?.toLowerCase() ?? "unknown";
       const name = msg.sender?.emailAddress?.name ?? email;
 
       if (!map.has(email)) {
-        map.set(email, {
-          email,
-          name,
-          count: 0,
-          latestDate: msg.receivedDateTime,
-          messageIds: [],
-        });
+        map.set(email, { email, name, count: 0, latestDate: msg.receivedDateTime, messageIds: [] });
       }
 
       const g = map.get(email)!;
       g.count++;
       g.messageIds.push(msg.id);
-      if (msg.receivedDateTime > g.latestDate) {
-        g.latestDate = msg.receivedDateTime;
-      }
+      if (msg.receivedDateTime > g.latestDate) g.latestDate = msg.receivedDateTime;
     }
 
     const senders = [...map.values()].sort((a, b) => b.count - a.count);

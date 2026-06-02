@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { batchDeleteMessages } from "@/lib/graph";
+import { batchDeleteGmailMessages } from "@/lib/gmail";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -16,7 +17,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await batchDeleteMessages(session.accessToken, ids);
+    const result = session.provider === "google"
+      ? await batchDeleteGmailMessages(session.accessToken, ids)
+      : await batchDeleteMessages(session.accessToken, ids);
     return NextResponse.json(result);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";

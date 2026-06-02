@@ -36,13 +36,22 @@ function LandingNav() {
     <nav style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 10 }}
       className="flex items-center justify-between px-8 py-6 max-w-6xl mx-auto w-full">
       <FacilitateLogo light />
-      <button
-        onClick={() => signIn("microsoft-entra-id")}
-        style={{ color: B.white, borderColor: "rgba(255,255,255,0.35)", fontSize: 13, fontWeight: 700, letterSpacing: "0.12em" }}
-        className="border px-5 py-2.5 hover:bg-white/10 transition-colors uppercase"
-      >
-        Connect Outlook
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => signIn("microsoft-entra-id")}
+          style={{ color: B.white, borderColor: "rgba(255,255,255,0.35)", fontSize: 13, fontWeight: 700, letterSpacing: "0.12em" }}
+          className="border px-5 py-2.5 hover:bg-white/10 transition-colors uppercase"
+        >
+          Outlook
+        </button>
+        <button
+          onClick={() => signIn("google")}
+          style={{ color: B.white, borderColor: "rgba(255,255,255,0.35)", fontSize: 13, fontWeight: 700, letterSpacing: "0.12em" }}
+          className="border px-5 py-2.5 hover:bg-white/10 transition-colors uppercase"
+        >
+          Gmail
+        </button>
+      </div>
     </nav>
   );
 }
@@ -85,6 +94,14 @@ function Hero() {
             >
               <MicrosoftLogo />
               Connect Outlook
+            </button>
+            <button
+              onClick={() => signIn("google")}
+              style={{ backgroundColor: "rgba(255,255,255,0.1)", color: B.white, fontWeight: 700, fontSize: 13, letterSpacing: "0.15em", border: "1px solid rgba(255,255,255,0.25)" }}
+              className="inline-flex items-center gap-3 px-8 py-4 uppercase hover:opacity-90 transition-opacity"
+            >
+              <GoogleLogo />
+              Connect Gmail
             </button>
             <a href="#how-it-works"
               style={{ color: "rgba(255,255,255,0.55)", fontSize: 13, fontWeight: 700, letterSpacing: "0.15em", borderBottom: "1px solid rgba(255,255,255,0.25)" }}
@@ -243,16 +260,26 @@ function BottomCta() {
       <div className="max-w-6xl mx-auto px-8 flex flex-col md:flex-row items-center justify-between gap-8">
         <div>
           <h2 style={{ color: B.navy, fontWeight: 900, fontSize: 40, lineHeight: 1.1 }} className="mb-3">Ready to start?</h2>
-          <p style={{ color: B.muted, fontWeight: 300, fontSize: 18 }}>Connect your Outlook account. It takes under 30 seconds.</p>
+          <p style={{ color: B.muted, fontWeight: 300, fontSize: 18 }}>Connect your inbox. It takes under 30 seconds.</p>
         </div>
-        <button
-          onClick={() => signIn("microsoft-entra-id")}
-          style={{ backgroundColor: B.navy, color: B.white, fontWeight: 700, fontSize: 13, letterSpacing: "0.15em", flexShrink: 0 }}
-          className="inline-flex items-center gap-3 px-8 py-4 uppercase hover:opacity-90 transition-opacity"
-        >
-          <MicrosoftLogo />
-          Connect Outlook
-        </button>
+        <div className="flex flex-wrap gap-3 flex-shrink-0">
+          <button
+            onClick={() => signIn("microsoft-entra-id")}
+            style={{ backgroundColor: B.navy, color: B.white, fontWeight: 700, fontSize: 13, letterSpacing: "0.15em" }}
+            className="inline-flex items-center gap-3 px-8 py-4 uppercase hover:opacity-90 transition-opacity"
+          >
+            <MicrosoftLogo />
+            Outlook
+          </button>
+          <button
+            onClick={() => signIn("google")}
+            style={{ backgroundColor: B.teal, color: B.white, fontWeight: 700, fontSize: 13, letterSpacing: "0.15em" }}
+            className="inline-flex items-center gap-3 px-8 py-4 uppercase hover:opacity-90 transition-opacity"
+          >
+            <GoogleLogo />
+            Gmail
+          </button>
+        </div>
       </div>
     </section>
   );
@@ -317,6 +344,17 @@ function MicrosoftLogo() {
       <rect x="11" y="1"  width="9" height="9" fill="#7fba00" />
       <rect x="1"  y="11" width="9" height="9" fill="#00a4ef" />
       <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+    </svg>
+  );
+}
+
+function GoogleLogo() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
     </svg>
   );
 }

@@ -1,5 +1,6 @@
 import type { NextAuthConfig } from "next-auth";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
+import Google from "next-auth/providers/google";
 
 // "consumers" → personal Hotmail/Outlook.com accounts only (uses real GUID for issuer check)
 // "common"    → personal + work/school accounts (issuer varies per tenant, so we skip strict check)
@@ -16,12 +17,21 @@ export const authConfig: NextAuthConfig = {
     MicrosoftEntraID({
       clientId: process.env.AZURE_AD_CLIENT_ID!,
       clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
-      // With "common", skip issuer check — each org returns its own tenant GUID
       ...(isCommon ? {} : { issuer }),
       authorization: {
         params: {
-          scope:
-            "openid profile email offline_access Mail.Read Mail.ReadWrite",
+          scope: "openid profile email offline_access Mail.Read Mail.ReadWrite",
+        },
+      },
+    }),
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      authorization: {
+        params: {
+          scope: "openid profile email https://www.googleapis.com/auth/gmail.modify",
+          access_type: "offline",
+          prompt: "consent",
         },
       },
     }),
@@ -30,11 +40,13 @@ export const authConfig: NextAuthConfig = {
     async jwt({ token, account }) {
       if (account) {
         token.accessToken = account.access_token;
+        token.provider = account.provider;
       }
       return token;
     },
     async session({ session, token }) {
       session.accessToken = token.accessToken as string | undefined;
+      session.provider = token.provider as string | undefined;
       return session;
     },
   },
