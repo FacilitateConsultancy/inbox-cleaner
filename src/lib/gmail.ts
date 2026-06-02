@@ -96,19 +96,30 @@ export async function batchDeleteGmailMessages(
   token: string,
   ids: string[]
 ): Promise<{ deleted: number; failed: number }> {
-  // Gmail batch delete — max 1000 per request
   let deleted = 0;
   let failed = 0;
 
   for (let i = 0; i < ids.length; i += 1000) {
     const chunk = ids.slice(i, i + 1000);
     try {
-      await gFetch("/messages/batchDelete", token, {
+      const url = `${BASE}/messages/batchDelete`;
+      const res = await fetch(url, {
         method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ ids: chunk }),
       });
-      deleted += chunk.length;
-    } catch {
+      if (res.ok || res.status === 204) {
+        deleted += chunk.length;
+      } else {
+        const body = await res.text().catch(() => "");
+        console.error(`Gmail batchDelete ${res.status}: ${body}`);
+        failed += chunk.length;
+      }
+    } catch (e) {
+      console.error("Gmail batchDelete error:", e);
       failed += chunk.length;
     }
   }
