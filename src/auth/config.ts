@@ -29,7 +29,7 @@ export const authConfig: NextAuthConfig = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope: "openid profile email https://www.googleapis.com/auth/gmail.modify",
+          scope: "openid profile email https://mail.google.com/",
           access_type: "offline",
           prompt: "consent",
         },
