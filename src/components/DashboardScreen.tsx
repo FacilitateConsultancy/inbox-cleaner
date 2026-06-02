@@ -11,9 +11,10 @@ interface Props {
   total: number;
   onStartReview: () => void;
   onRescan: () => void;
+  onIntelligence: () => void;
 }
 
-export function DashboardScreen({ senders, total, onStartReview, onRescan }: Props) {
+export function DashboardScreen({ senders, total, onStartReview, onRescan, onIntelligence }: Props) {
   const score = useMemo(() => calcHealthScore(senders, total), [senders, total]);
   const { grade, label } = healthGrade(score);
 
@@ -111,6 +112,13 @@ export function DashboardScreen({ senders, total, onStartReview, onRescan }: Pro
           className="uppercase hover:opacity-90 transition-opacity"
         >
           Start Review →
+        </button>
+        <button
+          onClick={onIntelligence}
+          style={{ backgroundColor: B.navy, color: B.white, fontWeight: 700, fontSize: 13, letterSpacing: "0.15em", padding: "12px 32px" }}
+          className="uppercase hover:opacity-90 transition-opacity"
+        >
+          Inbox Intelligence ✦
         </button>
         <button
           onClick={onRescan}

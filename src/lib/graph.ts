@@ -83,6 +83,78 @@ export async function batchDeleteMessages(
   return { deleted, failed };
 }
 
+// ── Folder operations ───────────────────────────────────────────────────────
+
+/** Create a mail folder under the inbox root. Returns the new folder's ID. */
+export async function createMailFolder(token: string, name: string): Promise<string> {
+  const res = await gFetch("/me/mailFolders", token, {
+    method: "POST",
+    body: JSON.stringify({ displayName: name }),
+  });
+  const data = await res.json();
+  return data.id as string;
+}
+
+/** Get all top-level mail folders (to check if one already exists). */
+export async function listMailFolders(token: string): Promise<{ id: string; displayName: string }[]> {
+  const res = await gFetch("/me/mailFolders?$top=50", token);
+  const data = await res.json();
+  return (data.value ?? []) as { id: string; displayName: string }[];
+}
+
+/** Get or create a folder by display name. Returns folder ID. */
+export async function getOrCreateFolder(token: string, name: string): Promise<string> {
+  const folders = await listMailFolders(token);
+  const existing = folders.find(f => f.displayName.toLowerCase() === name.toLowerCase());
+  if (existing) return existing.id;
+  return createMailFolder(token, name);
+}
+
+/** Move a batch of messages to a folder. Returns {moved, failed}. */
+export async function moveMessagesToFolder(
+  token: string,
+  messageIds: string[],
+  folderId: string
+): Promise<{ moved: number; failed: number }> {
+  let moved = 0;
+  let failed = 0;
+
+  // Graph batch API: max 20 requests per batch
+  for (let i = 0; i < messageIds.length; i += 20) {
+    const chunk = messageIds.slice(i, i + 20);
+    const body = {
+      requests: chunk.map((id, j) => ({
+        id: String(j),
+        method: "POST",
+        url: `/me/messages/${id}/move`,
+        headers: { "Content-Type": "application/json" },
+        body: { destinationId: folderId },
+      })),
+    };
+
+    const res = await fetch(`${BASE}/$batch`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      failed += chunk.length;
+      continue;
+    }
+
+    const data = await res.json();
+    for (const r of data.responses ?? []) {
+      r.status >= 200 && r.status < 300 ? moved++ : failed++;
+    }
+  }
+
+  return { moved, failed };
+}
+
 /** Fetch the List-Unsubscribe URL from the most recent message of a sender. */
 export interface UnsubscribeInfo {
   /** RFC 8058 one-click POST URL — most reliable */

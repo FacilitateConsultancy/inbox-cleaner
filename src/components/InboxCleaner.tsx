@@ -7,9 +7,10 @@ import { DashboardScreen } from "./DashboardScreen";
 import { ReviewScreen } from "./ReviewScreen";
 import { ConfirmationScreen } from "./ConfirmationScreen";
 import { SuccessScreen } from "./SuccessScreen";
+import { IntelligenceScreen } from "./IntelligenceScreen";
 import type { SenderGroup, SenderDecision } from "@/types";
 
-type Stage = "scanning" | "dashboard" | "review" | "confirming" | "deleting" | "done";
+type Stage = "scanning" | "dashboard" | "review" | "confirming" | "deleting" | "done" | "intelligence";
 
 interface DoneResult { deleted: number; failed: number }
 
@@ -97,10 +98,12 @@ export function InboxCleaner({ userEmail }: { userEmail: string }) {
     confirming: "Confirm",
     deleting: "Deleting",
     done: "Complete",
+    intelligence: "Intelligence",
   };
 
   // Full-screen stages (no nav)
   const fullScreen = stage === "scanning" || stage === "done";
+
 
   return (
     <>
@@ -135,7 +138,12 @@ export function InboxCleaner({ userEmail }: { userEmail: string }) {
           total={totalEmails}
           onStartReview={() => setStage("review")}
           onRescan={reset}
+          onIntelligence={() => setStage("intelligence")}
         />
+      )}
+
+      {stage === "intelligence" && (
+        <IntelligenceScreen />
       )}
 
       {stage === "review" && (
