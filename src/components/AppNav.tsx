@@ -1,7 +1,6 @@
 "use client";
 
 import { signOut } from "next-auth/react";
-import Link from "next/link";
 import { FacilitateLogo } from "./LandingPage";
 
 const B = { navy: "#1C213E", teal: "#3B8590", border: "#DDE1ED", muted: "#6B7299", white: "#FFFFFF", bg: "#F7F8FC" };
@@ -10,9 +9,10 @@ interface Props {
   userEmail?: string;
   stage?: string;
   progress?: { current: number; total: number };
+  onHome?: () => void;
 }
 
-export function AppNav({ userEmail, stage, progress }: Props) {
+export function AppNav({ userEmail, stage, progress, onHome }: Props) {
   return (
     <header style={{ backgroundColor: B.white, borderBottom: `1px solid ${B.border}`, position: "sticky", top: 0, zIndex: 20 }}>
       <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between gap-6">
@@ -45,13 +45,13 @@ export function AppNav({ userEmail, stage, progress }: Props) {
               {userEmail}
             </span>
           )}
-          <Link
-            href="/"
+          <button
+            onClick={onHome}
             style={{ color: B.muted, fontSize: 11, fontWeight: 700, letterSpacing: "0.15em" }}
             className="uppercase hover:opacity-70 transition-opacity"
           >
             ← Home
-          </Link>
+          </button>
           <button
             onClick={() => signOut({ callbackUrl: "/" })}
             style={{ color: B.muted, fontSize: 11, fontWeight: 700, letterSpacing: "0.15em" }}

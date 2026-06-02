@@ -108,6 +108,7 @@ export function InboxCleaner({ userEmail }: { userEmail: string }) {
         <AppNav
           userEmail={userEmail}
           stage={navStage[stage]}
+          onHome={() => setStage("dashboard")}
           progress={
             stage === "review"
               ? { current: decided.length, total: senders.length }
