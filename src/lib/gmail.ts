@@ -98,12 +98,17 @@ async function fetchGmailBatch(
   return messages;
 }
 
-export async function fetchGmailMessages(token: string, limit = 10_000): Promise<EmailMessage[]> {
+export async function fetchGmailMessages(token: string, limit = 5_000): Promise<EmailMessage[]> {
   const messages: EmailMessage[] = [];
   let pageToken: string | undefined;
 
   while (messages.length < limit) {
-    const params = new URLSearchParams({ maxResults: "500", labelIds: "INBOX" });
+    // Use q:"in:inbox" to bypass Gmail's cache and exclude trashed/moved emails
+    const params = new URLSearchParams({
+      maxResults: "500",
+      q: "in:inbox",
+      _ts: String(Date.now()), // cache-bust
+    });
     if (pageToken) params.set("pageToken", pageToken);
 
     const listRes = await gFetch(`/messages?${params}`, token);

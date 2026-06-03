@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "src/app/api/emails/route.ts": { "maxDuration": 60 },
+    "src/app/api/intelligence/analyze/route.ts": { "maxDuration": 60 },
+    "src/app/api/intelligence/apply/route.ts": { "maxDuration": 60 }
+  }
+}
