@@ -41,10 +41,21 @@ const ACTION_COLORS: Record<RuleAction, { bg: string; color: string }> = {
 
 type Stage = "idle" | "loading" | "results" | "reviewing" | "applying" | "done";
 
+interface RuleResult {
+  ruleId: string;
+  category: string;
+  action: string;
+  moved?: number;
+  deleted?: number;
+  failed: number;
+  error?: string;
+}
+
 interface ApplyDoneResult {
   totalMoved: number;
   totalDeleted: number;
   totalFailed: number;
+  results: RuleResult[];
 }
 
 export function IntelligenceScreen({ senders, onRescan }: { senders: SenderGroup[]; onRescan: () => void }) {
@@ -469,24 +480,54 @@ function RuleRow({ rule, onToggle, onSetAction }: {
 // ── Done Screen ─────────────────────────────────────────────────────────────
 
 function DoneScreen({ result, onReset, onRescan }: { result: ApplyDoneResult; onReset: () => void; onRescan: () => void }) {
-  return (
-    <div style={{ maxWidth: 640, margin: "0 auto", padding: "64px 24px", textAlign: "center" }}>
-      <div style={{ width: 48, height: 2, backgroundColor: B.teal, margin: "0 auto 32px" }} />
-      <p style={{ color: B.teal, fontSize: 11, fontWeight: 700, letterSpacing: "0.2em", marginBottom: 16 }} className="uppercase">Complete</p>
-      <h2 style={{ color: B.navy, fontWeight: 900, fontSize: "clamp(2rem,4vw,3rem)", lineHeight: 1.05, letterSpacing: "-0.02em", marginBottom: 16 }}>
-        Rules applied.
-      </h2>
-      <p style={{ color: B.muted, fontSize: 16, fontWeight: 300, marginBottom: 40 }}>
-        Your inbox has been reorganised.
-      </p>
+  const nothingHappened = result.totalMoved === 0 && result.totalDeleted === 0;
+  const hasErrors = result.results?.some(r => r.error || r.failed > 0);
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 1, backgroundColor: B.border, marginBottom: 40 }}>
-        <Metric label="Moved" value={result.totalMoved} color={B.teal} />
-        <Metric label="Deleted" value={result.totalDeleted} color={B.plum} />
-        <Metric label="Failed" value={result.totalFailed} color={B.muted} />
+  return (
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "48px 24px" }}>
+      <div style={{ textAlign: "center", marginBottom: 40 }}>
+        <div style={{ width: 48, height: 2, backgroundColor: nothingHappened ? B.plum : B.teal, margin: "0 auto 24px" }} />
+        <p style={{ color: nothingHappened ? B.plum : B.teal, fontSize: 11, fontWeight: 700, letterSpacing: "0.2em", marginBottom: 12 }} className="uppercase">
+          {nothingHappened ? "Action Required" : "Complete"}
+        </p>
+        <h2 style={{ color: B.navy, fontWeight: 900, fontSize: "clamp(1.8rem,3vw,2.5rem)", lineHeight: 1.05, marginBottom: 12 }}>
+          {nothingHappened ? "Nothing was processed." : "Rules applied."}
+        </h2>
+        <p style={{ color: B.muted, fontSize: 15, fontWeight: 300 }}>
+          {nothingHappened
+            ? "Your session may have expired or permissions are missing. Sign out and back in, then try again."
+            : "Your inbox has been reorganised."}
+        </p>
       </div>
 
-      <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+      {/* Totals */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 1, backgroundColor: B.border, marginBottom: 32 }}>
+        <Metric label="Moved" value={result.totalMoved} color={B.teal} />
+        <Metric label="Binned" value={result.totalDeleted} color={B.plum} />
+        <Metric label="Failed" value={result.totalFailed} color={result.totalFailed > 0 ? B.plum : B.muted} />
+      </div>
+
+      {/* Per-rule breakdown */}
+      {hasErrors && (
+        <div style={{ marginBottom: 32 }}>
+          <p style={{ color: B.muted, fontSize: 10, fontWeight: 700, letterSpacing: "0.15em", marginBottom: 12 }} className="uppercase">Rule details</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {result.results?.map(r => (
+              <div key={r.ruleId} style={{ backgroundColor: r.error || r.failed > 0 ? B.plum + "08" : B.bgMid, border: `1px solid ${r.error || r.failed > 0 ? B.plum + "30" : B.border}`, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                <span style={{ color: B.navy, fontSize: 13, fontWeight: 600 }}>{r.category}</span>
+                {r.error
+                  ? <span style={{ color: B.plum, fontSize: 11, fontWeight: 600 }}>⚠ {r.error.slice(0, 80)}</span>
+                  : <span style={{ color: B.muted, fontSize: 11 }}>
+                      {r.moved ? `${r.moved} moved` : ""}{r.deleted ? `${r.deleted} binned` : ""}{r.failed > 0 ? ` · ${r.failed} failed` : ""}
+                    </span>
+                }
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <button
           onClick={onRescan}
           style={{ backgroundColor: B.navy, color: B.white, fontWeight: 700, fontSize: 13, letterSpacing: "0.15em", padding: "14px 28px" }}
