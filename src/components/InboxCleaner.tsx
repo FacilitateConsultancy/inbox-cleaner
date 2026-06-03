@@ -122,8 +122,18 @@ export function InboxCleaner({ userEmail }: { userEmail: string }) {
 
       {error && (
         <div className="max-w-2xl mx-auto px-6 pt-6">
-          <div style={{ backgroundColor: "#F2EBF0", border: "1px solid #4B2C4240", color: "#4B2C42", padding: "12px 16px", fontSize: 14, fontWeight: 500 }}>
-            {error}
+          <div style={{ backgroundColor: "#F2EBF0", border: "1px solid #4B2C4240", color: "#4B2C42", padding: "16px 20px", fontSize: 14 }}>
+            <p style={{ fontWeight: 700, marginBottom: 6 }}>Something went wrong</p>
+            <p style={{ fontWeight: 400, marginBottom: 12, opacity: 0.85 }}>{error}</p>
+            <p style={{ fontWeight: 500, fontSize: 13 }}>
+              Try these steps:
+            </p>
+            <ol style={{ paddingLeft: 18, marginTop: 6, fontSize: 13, fontWeight: 400, lineHeight: 1.8 }}>
+              <li>Sign out and sign back in — your session may have expired</li>
+              <li>For Gmail: make sure you tick <strong>"Read, compose and delete all your email"</strong> on the permissions screen</li>
+              <li>If the error persists, try a different browser or disable extensions</li>
+              <li>Contact us at <a href="mailto:hello@facilitateconsult.co.uk" style={{ color: "#4B2C42", textDecoration: "underline" }}>hello@facilitateconsult.co.uk</a></li>
+            </ol>
           </div>
         </div>
       )}
