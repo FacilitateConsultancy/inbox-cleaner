@@ -76,6 +76,7 @@ export const authConfig: NextAuthConfig = {
           scope: "openid profile email https://mail.google.com/",
           access_type: "offline",
           prompt: "consent",
+          include_granted_scopes: false,
         },
       },
     }),
