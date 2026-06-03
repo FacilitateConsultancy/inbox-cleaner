@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { getOrCreateFolder, moveMessagesToFolder, batchDeleteMessages } from "@/lib/graph";
-import { batchDeleteGmailMessages } from "@/lib/gmail";
+import { batchDeleteGmailMessages, getOrCreateGmailLabel, moveGmailMessagesToLabel } from "@/lib/gmail";
 import type { IntelligenceRule } from "@/types";
 
 interface ApplyResult {
@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
   for (const rule of rules) {
     if (!rule.enabled) continue;
 
+    const ids: string[] = rule.messageIds ?? [];
     const result: ApplyResult = {
       ruleId: rule.id,
       action: rule.action,
@@ -42,19 +43,19 @@ export async function POST(req: NextRequest) {
     };
 
     try {
-      if (rule.action === "move" && rule.folder && !isGoogle) {
-        // Create/get folder then move messages
-        const folderId = await getOrCreateFolder(token, rule.folder);
-        const { moved, failed } = await moveMessagesToFolder(token, rule.messageIds ?? [], folderId);
-        result.moved = moved;
-        result.failed = failed;
-      } else if (rule.action === "move" && isGoogle) {
-        // Gmail doesn't support folder moves in same way — skip for now
-        result.moved = 0;
-        result.failed = 0;
-        result.error = "Folder moves not yet supported for Gmail";
+      if (rule.action === "move" && rule.folder) {
+        if (isGoogle) {
+          const labelId = await getOrCreateGmailLabel(token, rule.folder);
+          const { moved, failed } = await moveGmailMessagesToLabel(token, ids, labelId);
+          result.moved = moved;
+          result.failed = failed;
+        } else {
+          const folderId = await getOrCreateFolder(token, rule.folder);
+          const { moved, failed } = await moveMessagesToFolder(token, ids, folderId);
+          result.moved = moved;
+          result.failed = failed;
+        }
       } else if (rule.action === "delete" || rule.action === "unsubscribe") {
-        const ids = rule.messageIds ?? [];
         if (isGoogle) {
           const { deleted, failed } = await batchDeleteGmailMessages(token, ids);
           result.deleted = deleted;
@@ -67,16 +68,17 @@ export async function POST(req: NextRequest) {
       }
       // "keep" — do nothing
     } catch (e) {
-      result.failed = rule.emailCount;
+      result.failed = ids.length;
       result.error = e instanceof Error ? e.message : "Unknown error";
+      console.error(`Rule ${rule.id} (${rule.category}) failed:`, e);
     }
 
     results.push(result);
   }
 
-  const totalMoved = results.reduce((s, r) => s + (r.moved ?? 0), 0);
+  const totalMoved   = results.reduce((s, r) => s + (r.moved   ?? 0), 0);
   const totalDeleted = results.reduce((s, r) => s + (r.deleted ?? 0), 0);
-  const totalFailed = results.reduce((s, r) => s + r.failed, 0);
+  const totalFailed  = results.reduce((s, r) => s + r.failed, 0);
 
   return NextResponse.json({ results, totalMoved, totalDeleted, totalFailed });
 }

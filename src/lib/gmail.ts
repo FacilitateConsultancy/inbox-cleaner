@@ -156,6 +156,64 @@ export async function batchDeleteGmailMessages(
   return { deleted, failed };
 }
 
+// ── Label (folder) operations ────────────────────────────────────────────────
+
+export async function listGmailLabels(token: string): Promise<{ id: string; name: string }[]> {
+  const res = await gFetch("/labels", token);
+  const data = await res.json();
+  return data.labels ?? [];
+}
+
+export async function createGmailLabel(token: string, name: string): Promise<string> {
+  const res = await gFetch("/labels", token, {
+    method: "POST",
+    body: JSON.stringify({ name, labelListVisibility: "labelShow", messageListVisibility: "show" }),
+  });
+  const data = await res.json();
+  return data.id as string;
+}
+
+export async function getOrCreateGmailLabel(token: string, name: string): Promise<string> {
+  const labels = await listGmailLabels(token);
+  const existing = labels.find(l => l.name.toLowerCase() === name.toLowerCase());
+  if (existing) return existing.id;
+  return createGmailLabel(token, name);
+}
+
+/** Apply a label and remove from INBOX — Gmail's equivalent of "move to folder". */
+export async function moveGmailMessagesToLabel(
+  token: string,
+  messageIds: string[],
+  labelId: string
+): Promise<{ moved: number; failed: number }> {
+  let moved = 0;
+  let failed = 0;
+
+  // Gmail batchModify supports up to 1000 IDs per request
+  for (let i = 0; i < messageIds.length; i += 1000) {
+    const chunk = messageIds.slice(i, i + 1000);
+    try {
+      const res = await fetch(`${BASE}/messages/batchModify`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: chunk, addLabelIds: [labelId], removeLabelIds: ["INBOX"] }),
+      });
+      if (res.ok || res.status === 204) {
+        moved += chunk.length;
+      } else {
+        const body = await res.text().catch(() => "");
+        console.error(`Gmail batchModify ${res.status}: ${body}`);
+        failed += chunk.length;
+      }
+    } catch (e) {
+      console.error("Gmail batchModify error:", e);
+      failed += chunk.length;
+    }
+  }
+
+  return { moved, failed };
+}
+
 export interface GmailUnsubscribeInfo {
   postUrl: string | null;
   linkUrl: string | null;
