@@ -45,7 +45,7 @@ function LandingNav() {
           Outlook
         </button>
         <button
-          onClick={() => signIn("google", {}, { prompt: "select_account" })}
+          onClick={() => signIn("google", {}, { prompt: "consent select_account" })}
           style={{ color: B.white, borderColor: "rgba(255,255,255,0.35)", fontSize: 13, fontWeight: 700, letterSpacing: "0.12em" }}
           className="border px-5 py-2.5 hover:bg-white/10 transition-colors uppercase"
         >
@@ -96,7 +96,7 @@ function Hero() {
               Connect Outlook
             </button>
             <button
-              onClick={() => signIn("google", {}, { prompt: "select_account" })}
+              onClick={() => signIn("google", {}, { prompt: "consent select_account" })}
               style={{ backgroundColor: "rgba(255,255,255,0.1)", color: B.white, fontWeight: 700, fontSize: 13, letterSpacing: "0.15em", border: "1px solid rgba(255,255,255,0.25)" }}
               className="inline-flex items-center gap-3 px-8 py-4 uppercase hover:opacity-90 transition-opacity"
             >
@@ -272,7 +272,7 @@ function BottomCta() {
             Outlook
           </button>
           <button
-            onClick={() => signIn("google", {}, { prompt: "select_account" })}
+            onClick={() => signIn("google", {}, { prompt: "consent select_account" })}
             style={{ backgroundColor: B.teal, color: B.white, fontWeight: 700, fontSize: 13, letterSpacing: "0.15em" }}
             className="inline-flex items-center gap-3 px-8 py-4 uppercase hover:opacity-90 transition-opacity"
           >
