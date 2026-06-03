@@ -47,7 +47,7 @@ interface ApplyDoneResult {
   totalFailed: number;
 }
 
-export function IntelligenceScreen({ senders }: { senders: SenderGroup[] }) {
+export function IntelligenceScreen({ senders, onRescan }: { senders: SenderGroup[]; onRescan: () => void }) {
   const [stage, setStage] = useState<Stage>("idle");
   const [result, setResult] = useState<IntelligenceResult | null>(null);
   const [rules, setRules] = useState<IntelligenceRule[]>([]);
@@ -114,7 +114,10 @@ export function IntelligenceScreen({ senders }: { senders: SenderGroup[] }) {
   };
 
   if (stage === "done" && doneResult) {
-    return <DoneScreen result={doneResult} onReset={() => { setStage("idle"); setResult(null); setRules([]); setDoneResult(null); }} />;
+    return <DoneScreen result={doneResult}
+      onReset={() => { setStage("idle"); setResult(null); setRules([]); setDoneResult(null); }}
+      onRescan={onRescan}
+    />;
   }
 
   if (stage === "applying") {
@@ -465,7 +468,7 @@ function RuleRow({ rule, onToggle, onSetAction }: {
 
 // ── Done Screen ─────────────────────────────────────────────────────────────
 
-function DoneScreen({ result, onReset }: { result: ApplyDoneResult; onReset: () => void }) {
+function DoneScreen({ result, onReset, onRescan }: { result: ApplyDoneResult; onReset: () => void; onRescan: () => void }) {
   return (
     <div style={{ maxWidth: 640, margin: "0 auto", padding: "64px 24px", textAlign: "center" }}>
       <div style={{ width: 48, height: 2, backgroundColor: B.teal, margin: "0 auto 32px" }} />
@@ -483,13 +486,22 @@ function DoneScreen({ result, onReset }: { result: ApplyDoneResult; onReset: () 
         <Metric label="Failed" value={result.totalFailed} color={B.muted} />
       </div>
 
-      <button
-        onClick={onReset}
-        style={{ backgroundColor: B.teal, color: B.white, fontWeight: 700, fontSize: 13, letterSpacing: "0.15em", padding: "14px 28px" }}
-        className="uppercase hover:opacity-90 transition-opacity"
-      >
-        Run Again
-      </button>
+      <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+        <button
+          onClick={onRescan}
+          style={{ backgroundColor: B.navy, color: B.white, fontWeight: 700, fontSize: 13, letterSpacing: "0.15em", padding: "14px 28px" }}
+          className="uppercase hover:opacity-90 transition-opacity"
+        >
+          Rescan Inbox →
+        </button>
+        <button
+          onClick={onReset}
+          style={{ backgroundColor: B.bgMid, color: B.muted, fontWeight: 700, fontSize: 13, letterSpacing: "0.15em", padding: "14px 28px", border: `1px solid ${B.border}` }}
+          className="uppercase hover:opacity-90 transition-opacity"
+        >
+          Run Again
+        </button>
+      </div>
     </div>
   );
 }

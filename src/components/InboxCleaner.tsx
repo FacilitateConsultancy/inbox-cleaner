@@ -143,7 +143,7 @@ export function InboxCleaner({ userEmail }: { userEmail: string }) {
       )}
 
       {stage === "intelligence" && (
-        <IntelligenceScreen senders={senders} />
+        <IntelligenceScreen senders={senders} onRescan={reset} />
       )}
 
       {stage === "review" && (
