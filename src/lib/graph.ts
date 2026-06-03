@@ -24,7 +24,8 @@ async function gFetch(
 }
 
 export async function fetchInboxMessages(
-  token: string
+  token: string,
+  limit = 10_000
 ): Promise<EmailMessage[]> {
   const messages: EmailMessage[] = [];
   let url =
@@ -33,7 +34,7 @@ export async function fetchInboxMessages(
     `&$top=100` +
     `&$orderby=receivedDateTime%20desc`;
 
-  while (url && messages.length < 2000) {
+  while (url && messages.length < limit) {
     const res = await gFetch(url, token);
     const data = await res.json();
     messages.push(...(data.value ?? []));

@@ -16,9 +16,9 @@ export async function POST(req: NextRequest) {
   const allSenders: SenderGroup[] = body.senders ?? [];
 
   try {
-    // Sample messages for subject-based classification
+    // Sample messages for subject-based classification (Gmail rate-limited to 1000)
     const messages = session.provider === "google"
-      ? await fetchGmailMessagesLimited(session.accessToken, 500)
+      ? await fetchGmailMessagesLimited(session.accessToken, 1000)
       : await fetchInboxMessages(session.accessToken);
 
     const raw = messages.map(m => ({

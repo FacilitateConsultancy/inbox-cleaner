@@ -87,20 +87,21 @@ async function fetchGmailBatch(
   return messages;
 }
 
-export async function fetchGmailMessages(token: string): Promise<EmailMessage[]> {
+export async function fetchGmailMessages(token: string, limit = 10_000): Promise<EmailMessage[]> {
   const messages: EmailMessage[] = [];
   let pageToken: string | undefined;
 
-  while (messages.length < 2000) {
+  while (messages.length < limit) {
     const params = new URLSearchParams({ maxResults: "500", labelIds: "INBOX" });
     if (pageToken) params.set("pageToken", pageToken);
 
     const listRes = await gFetch(`/messages?${params}`, token);
     const listData = await listRes.json();
-    const items: { id: string }[] = listData.messages ?? [];
+    const items: { id: string }[] = (listData.messages ?? []).slice(0, limit - messages.length);
     if (items.length === 0) break;
 
-    const batch = await fetchGmailBatch(token, items, false, 0);
+    // 150ms delay between batches to avoid rate limits
+    const batch = await fetchGmailBatch(token, items, false, 150);
     messages.push(...batch);
 
     pageToken = listData.nextPageToken;
