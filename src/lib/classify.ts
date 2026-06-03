@@ -248,39 +248,74 @@ function normaliseSubject(s: string): string {
 const DUPLICATE_CATEGORIES = new Set<EmailCategory>(["Newsletter", "Promotion", "Sale Alert"]);
 
 export function analyseMessages(messages: RawMessage[], allSenders?: FullSender[]): IntelligenceResult {
+  // Count emails per sender for volume-based fallback
+  const senderMsgCount = new Map<string, number>();
+  for (const msg of messages) {
+    senderMsgCount.set(msg.senderEmail, (senderMsgCount.get(msg.senderEmail) ?? 0) + 1);
+  }
+
+  // Also count from allSenders (full dataset)
+  const allSenderMap = new Map<string, FullSender>();
+  if (allSenders) {
+    for (const s of allSenders) {
+      allSenderMap.set(s.email.toLowerCase(), s);
+      const cur = senderMsgCount.get(s.email.toLowerCase()) ?? 0;
+      senderMsgCount.set(s.email.toLowerCase(), Math.max(cur, s.messageIds.length));
+    }
+  }
+
   // Build a sender → category map from the sample
   const senderCategoryVotes = new Map<string, { votes: Map<EmailCategory, number>; confidences: number[]; name: string }>();
-  // subjects per sender (for sample preview)
   const senderSubjects = new Map<string, string[]>();
 
   for (const msg of messages) {
     const { category, confidence } = classifyEmail(msg.subject, msg.senderEmail, msg.senderName);
-    if (category === "Other") continue;
     if (!senderCategoryVotes.has(msg.senderEmail)) {
       senderCategoryVotes.set(msg.senderEmail, { votes: new Map(), confidences: [], name: msg.senderName });
       senderSubjects.set(msg.senderEmail, []);
     }
     const entry = senderCategoryVotes.get(msg.senderEmail)!;
-    entry.votes.set(category, (entry.votes.get(category) ?? 0) + 1);
-    entry.confidences.push(confidence);
+    // Only count non-Other votes
+    if (category !== "Other") {
+      entry.votes.set(category, (entry.votes.get(category) ?? 0) + 1);
+      entry.confidences.push(confidence);
+    }
     if (msg.subject) {
       const subjs = senderSubjects.get(msg.senderEmail)!;
       if (subjs.length < 5) subjs.push(msg.subject);
     }
   }
 
-  // For each sender, pick the winning category
-  const senderCategory = new Map<string, { category: EmailCategory; confidence: number; name: string }>();
-  for (const [email, { votes, confidences, name }] of senderCategoryVotes.entries()) {
-    const topCat = ([...votes.entries()].sort((a, b) => b[1] - a[1])[0])?.[0];
-    if (!topCat) continue;
-    const avgConf = Math.round(confidences.reduce((a, b) => a + b, 0) / confidences.length);
-    senderCategory.set(email, { category: topCat, confidence: avgConf, name });
+  // Also add senders from allSenders that weren't in the sample
+  if (allSenders) {
+    for (const s of allSenders) {
+      const email = s.email.toLowerCase();
+      if (!senderCategoryVotes.has(email)) {
+        senderCategoryVotes.set(email, { votes: new Map(), confidences: [], name: s.name });
+        senderSubjects.set(email, []);
+      }
+    }
   }
 
-  const allSenderMap = new Map<string, FullSender>();
-  if (allSenders) {
-    for (const s of allSenders) allSenderMap.set(s.email.toLowerCase(), s);
+  // For each sender, pick the winning category — fall back to volume-based classification
+  const senderCategory = new Map<string, { category: EmailCategory; confidence: number; name: string }>();
+  for (const [email, { votes, confidences, name }] of senderCategoryVotes.entries()) {
+    const totalEmails = senderMsgCount.get(email) ?? 0;
+    const topEntry = [...votes.entries()].sort((a, b) => b[1] - a[1])[0];
+
+    if (topEntry) {
+      // Has pattern matches — use best category
+      const avgConf = confidences.length > 0
+        ? Math.round(confidences.reduce((a, b) => a + b, 0) / confidences.length)
+        : 50;
+      senderCategory.set(email, { category: topEntry[0], confidence: avgConf, name });
+    } else if (totalEmails >= 3) {
+      // No pattern match but sends volume — classify by sender hints or default to Promotion
+      const { category: hintCat } = classifyEmail("", email, name);
+      const fallbackCat: EmailCategory = hintCat !== "Other" ? hintCat : "Promotion";
+      senderCategory.set(email, { category: fallbackCat, confidence: 45, name });
+    }
+    // Senders with <3 emails and no pattern match are skipped
   }
 
   // Build category groups
