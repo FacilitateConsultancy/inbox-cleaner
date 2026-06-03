@@ -28,6 +28,19 @@ export async function POST(req: NextRequest) {
       senderName: m.sender?.emailAddress?.name ?? "Unknown",
     }));
 
+    // Also synthesise "messages" from the full sender list so even senders
+    // not in the 500-message sample get classified via sender-name/email hints.
+    const senderSynthetic = allSenders.map(s => ({
+      id: s.messageIds[0] ?? "",
+      subject: "",
+      senderEmail: s.email.toLowerCase(),
+      senderName: s.name,
+    }));
+
+    const combined = [...raw, ...senderSynthetic.filter(
+      s => !raw.some(r => r.senderEmail === s.senderEmail)
+    )];
+
     // Pass full sender data so rules cover ALL emails, not just the sample
     const fullSenders = allSenders.map(s => ({
       email: s.email.toLowerCase(),
@@ -35,7 +48,7 @@ export async function POST(req: NextRequest) {
       messageIds: s.messageIds,
     }));
 
-    const result = analyseMessages(raw, fullSenders.length > 0 ? fullSenders : undefined);
+    const result = analyseMessages(combined, fullSenders.length > 0 ? fullSenders : undefined);
     return NextResponse.json(result);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";

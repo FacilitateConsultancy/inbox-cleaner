@@ -153,11 +153,23 @@ export const CATEGORY_DESCRIPTIONS: Record<EmailCategory, string> = {
   "Other":              "Keep in inbox",
 };
 
-// ── Classifier ──────────────────────────────────────────────────────────────
+// ── Sender email pattern hints ───────────────────────────────────────────────
 
-export function classifySubject(subject: string): { category: EmailCategory; confidence: number } {
+const SENDER_HINTS: Partial<Record<EmailCategory, RegExp[]>> = {
+  "Newsletter":         [/newsletter/i, /digest/i, /weekly/i, /monthly/i, /updates?@/i, /news@/i, /editorial/i],
+  "Promotion":          [/promo/i, /offers?@/i, /deals?@/i, /marketing@/i, /discount/i, /savings/i],
+  "Order Confirmation": [/orders?@/i, /order-confirm/i, /purchase/i, /checkout/i],
+  "Shipping Update":    [/shipping@/i, /dispatch/i, /delivery@/i, /track/i, /courier/i, /parcel/i, /postage/i],
+  "Receipt":            [/receipts?@/i, /invoice/i, /billing@/i, /payment@/i, /noreply.*shop/i],
+  "Finance":            [/bank/i, /finance/i, /statement/i, /account.*@/i, /invest/i, /pension/i],
+  "Travel":             [/booking/i, /travel/i, /hotel/i, /flight/i, /airline/i, /reservation/i],
+  "Social":             [/twitter/i, /linkedin/i, /facebook/i, /instagram/i, /notifications?@/i],
+};
+
+export function classifyEmail(subject: string, senderEmail: string, senderName: string): { category: EmailCategory; confidence: number } {
   const scores: Partial<Record<EmailCategory, number>> = {};
 
+  // Subject pattern matching
   for (const [cat, patterns] of Object.entries(PATTERNS) as [EmailCategory, RegExp[]][]) {
     if (patterns.length === 0) continue;
     let matched = 0;
@@ -165,8 +177,25 @@ export function classifySubject(subject: string): { category: EmailCategory; con
       if (p.test(subject)) matched++;
     }
     if (matched > 0) {
-      scores[cat] = matched / patterns.length;
+      scores[cat] = (scores[cat] ?? 0) + matched / patterns.length;
     }
+  }
+
+  // Sender email/name hints (lower weight)
+  const senderStr = `${senderEmail} ${senderName}`;
+  for (const [cat, hints] of Object.entries(SENDER_HINTS) as [EmailCategory, RegExp[]][]) {
+    for (const h of hints) {
+      if (h.test(senderStr)) {
+        scores[cat] = (scores[cat] ?? 0) + 0.15;
+        break;
+      }
+    }
+  }
+
+  // noreply / no-reply senders are almost always automated — boost newsletter/promo
+  if (/no.?reply|donotreply/i.test(senderEmail)) {
+    scores["Newsletter"] = (scores["Newsletter"] ?? 0) + 0.1;
+    scores["Promotion"]  = (scores["Promotion"]  ?? 0) + 0.05;
   }
 
   const sorted = (Object.entries(scores) as [EmailCategory, number][])
@@ -175,8 +204,13 @@ export function classifySubject(subject: string): { category: EmailCategory; con
   if (sorted.length === 0) return { category: "Other", confidence: 40 };
 
   const [topCat, topScore] = sorted[0];
-  const confidence = Math.min(95, Math.round(40 + topScore * 220));
+  const confidence = Math.min(95, Math.round(40 + topScore * 180));
   return { category: topCat, confidence };
+}
+
+/** Backwards compat — classify by subject only */
+export function classifySubject(subject: string): { category: EmailCategory; confidence: number } {
+  return classifyEmail(subject, "", "");
 }
 
 // ── Analyse a batch of messages ─────────────────────────────────────────────
@@ -204,7 +238,7 @@ export function analyseMessages(messages: RawMessage[], allSenders?: FullSender[
   const senderCategoryVotes = new Map<string, { votes: Map<EmailCategory, number>; confidences: number[]; name: string }>();
 
   for (const msg of messages) {
-    const { category, confidence } = classifySubject(msg.subject);
+    const { category, confidence } = classifyEmail(msg.subject, msg.senderEmail, msg.senderName);
     if (category === "Other") continue;
     if (!senderCategoryVotes.has(msg.senderEmail)) {
       senderCategoryVotes.set(msg.senderEmail, { votes: new Map(), confidences: [], name: msg.senderName });
