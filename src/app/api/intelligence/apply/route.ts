@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const rules: IntelligenceRule[] = body.rules ?? [];
+  const rules: (IntelligenceRule & { duplicateIds?: string[] })[] = body.rules ?? [];
 
   if (rules.length === 0) {
     return NextResponse.json({ error: "No rules provided" }, { status: 400 });
@@ -35,6 +35,11 @@ export async function POST(req: NextRequest) {
     if (!rule.enabled) continue;
 
     const ids: string[] = rule.messageIds ?? [];
+    // delete-duplicates only trashes the duplicate IDs, not all
+    const deleteIds: string[] = rule.action === "delete-duplicates"
+      ? (rule.duplicateIds ?? ids)
+      : ids;
+
     const result: ApplyResult = {
       ruleId: rule.id,
       action: rule.action,
@@ -55,20 +60,22 @@ export async function POST(req: NextRequest) {
           result.moved = moved;
           result.failed = failed;
         }
-      } else if (rule.action === "delete" || rule.action === "unsubscribe") {
+      } else if (rule.action === "delete" || rule.action === "delete-duplicates" || rule.action === "unsubscribe") {
+        // Outlook DELETE moves to Deleted Items (bin) — not permanent
+        // Gmail batchModify adds TRASH label — not permanent
         if (isGoogle) {
-          const { deleted, failed } = await batchDeleteGmailMessages(token, ids);
+          const { deleted, failed } = await batchDeleteGmailMessages(token, deleteIds);
           result.deleted = deleted;
           result.failed = failed;
         } else {
-          const { deleted, failed } = await batchDeleteMessages(token, ids);
+          const { deleted, failed } = await batchDeleteMessages(token, deleteIds);
           result.deleted = deleted;
           result.failed = failed;
         }
       }
       // "keep" — do nothing
     } catch (e) {
-      result.failed = ids.length;
+      result.failed = deleteIds.length;
       result.error = e instanceof Error ? e.message : "Unknown error";
       console.error(`Rule ${rule.id} (${rule.category}) failed:`, e);
     }

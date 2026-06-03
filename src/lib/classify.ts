@@ -228,24 +228,45 @@ interface FullSender {
   messageIds: string[];
 }
 
+/** Normalise a subject for duplicate detection — strip dates, numbers, reply prefixes */
+function normaliseSubject(s: string): string {
+  return s
+    .replace(/^(re|fwd?|fw):\s*/gi, "")
+    .replace(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/g, "")
+    .replace(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+\d{4}/gi, "")
+    .replace(/#?\d{5,}/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
 /**
  * Classify a sample of messages, then expand message IDs to the full sender
  * dataset. This means rules cover ALL emails from classified senders — not
  * just the sampled subset.
  */
+const DUPLICATE_CATEGORIES = new Set<EmailCategory>(["Newsletter", "Promotion", "Sale Alert"]);
+
 export function analyseMessages(messages: RawMessage[], allSenders?: FullSender[]): IntelligenceResult {
   // Build a sender → category map from the sample
   const senderCategoryVotes = new Map<string, { votes: Map<EmailCategory, number>; confidences: number[]; name: string }>();
+  // subjects per sender (for sample preview)
+  const senderSubjects = new Map<string, string[]>();
 
   for (const msg of messages) {
     const { category, confidence } = classifyEmail(msg.subject, msg.senderEmail, msg.senderName);
     if (category === "Other") continue;
     if (!senderCategoryVotes.has(msg.senderEmail)) {
       senderCategoryVotes.set(msg.senderEmail, { votes: new Map(), confidences: [], name: msg.senderName });
+      senderSubjects.set(msg.senderEmail, []);
     }
     const entry = senderCategoryVotes.get(msg.senderEmail)!;
     entry.votes.set(category, (entry.votes.get(category) ?? 0) + 1);
     entry.confidences.push(confidence);
+    if (msg.subject) {
+      const subjs = senderSubjects.get(msg.senderEmail)!;
+      if (subjs.length < 5) subjs.push(msg.subject);
+    }
   }
 
   // For each sender, pick the winning category
@@ -257,34 +278,50 @@ export function analyseMessages(messages: RawMessage[], allSenders?: FullSender[
     senderCategory.set(email, { category: topCat, confidence: avgConf, name });
   }
 
-  // Build category groups — use full sender messageIds if available
-  const catMap = new Map<EmailCategory, {
-    ids: string[];
-    senders: Map<string, string>;
-    confidences: number[];
-  }>();
-
   const allSenderMap = new Map<string, FullSender>();
   if (allSenders) {
     for (const s of allSenders) allSenderMap.set(s.email.toLowerCase(), s);
   }
 
+  // Build category groups
+  const catMap = new Map<EmailCategory, {
+    ids: string[];
+    senders: Map<string, string>;
+    confidences: number[];
+    subjects: string[];
+    duplicateIds: string[];
+  }>();
+
   for (const [email, { category, confidence, name }] of senderCategory.entries()) {
     if (!catMap.has(category)) {
-      catMap.set(category, { ids: [], senders: new Map(), confidences: [] });
+      catMap.set(category, { ids: [], senders: new Map(), confidences: [], subjects: [], duplicateIds: [] });
     }
     const entry = catMap.get(category)!;
     entry.senders.set(email, name);
     entry.confidences.push(confidence);
 
-    // Use full sender's message IDs if we have them, otherwise fall back to sampled IDs
+    // Collect sample subjects
+    const subjs = senderSubjects.get(email) ?? [];
+    for (const s of subjs) {
+      if (entry.subjects.length < 30) entry.subjects.push(s);
+    }
+
+    // Use full sender's message IDs
     const fullSender = allSenderMap.get(email);
-    if (fullSender) {
-      entry.ids.push(...fullSender.messageIds);
-    } else {
-      // fallback: add sampled IDs for this sender
-      for (const msg of messages) {
-        if (msg.senderEmail === email) entry.ids.push(msg.id);
+    const senderIds = fullSender ? fullSender.messageIds : messages.filter(m => m.senderEmail === email).map(m => m.id);
+    entry.ids.push(...senderIds);
+
+    // Duplicate detection for newsletter-type categories
+    if (DUPLICATE_CATEGORIES.has(category) && subjs.length > 1) {
+      const seen = new Map<string, string>(); // normalised subject → first (newest) id
+      const senderMsgs = messages.filter(m => m.senderEmail === email && m.subject);
+      for (const m of senderMsgs) {
+        const norm = normaliseSubject(m.subject);
+        if (!seen.has(norm)) {
+          seen.set(norm, m.id);
+        } else {
+          entry.duplicateIds.push(m.id);
+        }
       }
     }
   }
@@ -299,13 +336,23 @@ export function analyseMessages(messages: RawMessage[], allSenders?: FullSender[
     const folder = FOLDER_MAP[category];
     if (folder) suggestedFoldersSet.add(folder);
 
+    const hasDuplicates = data.duplicateIds.length > 0;
+    // Default action: duplicates-only delete for newsletter categories when duplicates exist
+    const suggestedAction: RuleAction =
+      hasDuplicates && DEFAULT_ACTIONS[category] === "delete"
+        ? "delete-duplicates"
+        : DEFAULT_ACTIONS[category];
+
     categories.push({
       category,
       count: data.ids.length,
       topSenders: [...data.senders.values()].slice(0, 3),
       messageIds: data.ids,
+      sampleSubjects: data.subjects,
+      duplicateIds: hasDuplicates ? data.duplicateIds : undefined,
+      duplicateCount: hasDuplicates ? data.duplicateIds.length : undefined,
       confidence: avgConfidence,
-      suggestedAction: DEFAULT_ACTIONS[category],
+      suggestedAction,
       suggestedFolder: folder,
     });
   }
@@ -320,9 +367,10 @@ export function analyseMessages(messages: RawMessage[], allSenders?: FullSender[
       action: c.suggestedAction,
       folder: c.suggestedFolder,
       confidence: c.confidence,
-      emailCount: c.count,
+      emailCount: c.suggestedAction === "delete-duplicates" ? (c.duplicateCount ?? c.count) : c.count,
       enabled: true,
       description: CATEGORY_DESCRIPTIONS[c.category],
+      sampleSubjects: c.sampleSubjects,
     }));
 
   return {

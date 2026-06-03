@@ -39,13 +39,16 @@ export type EmailCategory =
   | "Social"
   | "Other";
 
-export type RuleAction = "move" | "delete" | "unsubscribe" | "keep";
+export type RuleAction = "move" | "delete" | "delete-duplicates" | "unsubscribe" | "keep";
 
 export interface CategoryGroup {
   category: EmailCategory;
   count: number;
   topSenders: string[];
   messageIds: string[];
+  sampleSubjects: string[];          // up to 30 example subjects
+  duplicateIds?: string[];           // IDs of duplicate emails (all but newest per sender)
+  duplicateCount?: number;
   confidence: number;
   suggestedAction: RuleAction;
   suggestedFolder?: string;
@@ -61,6 +64,7 @@ export interface IntelligenceRule {
   enabled: boolean;
   description: string;
   messageIds?: string[];
+  sampleSubjects?: string[];
 }
 
 export interface IntelligenceResult {

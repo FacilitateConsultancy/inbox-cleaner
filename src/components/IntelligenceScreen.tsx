@@ -24,17 +24,19 @@ const CATEGORY_ICONS: Record<EmailCategory, string> = {
 };
 
 const ACTION_LABELS: Record<RuleAction, string> = {
-  "move":        "Move to folder",
-  "delete":      "Delete",
-  "unsubscribe": "Unsubscribe + Delete",
-  "keep":        "Keep in inbox",
+  "move":              "Move to folder",
+  "delete":            "Move to bin",
+  "delete-duplicates": "Bin duplicates only",
+  "unsubscribe":       "Unsubscribe + Bin",
+  "keep":              "Keep in inbox",
 };
 
 const ACTION_COLORS: Record<RuleAction, { bg: string; color: string }> = {
-  "move":        { bg: B.teal + "18",  color: B.teal },
-  "delete":      { bg: B.plum + "18",  color: B.plum },
-  "unsubscribe": { bg: B.plum + "18",  color: B.plum },
-  "keep":        { bg: B.bgMid,        color: B.muted },
+  "move":              { bg: B.teal + "18",  color: B.teal },
+  "delete":            { bg: B.plum + "18",  color: B.plum },
+  "delete-duplicates": { bg: "#E8780018",    color: "#B85C00" },
+  "unsubscribe":       { bg: B.plum + "18",  color: B.plum },
+  "keep":              { bg: B.bgMid,        color: B.muted },
 };
 
 type Stage = "idle" | "loading" | "results" | "reviewing" | "applying" | "done";
@@ -76,13 +78,17 @@ export function IntelligenceScreen({ senders }: { senders: SenderGroup[] }) {
     setStage("applying");
     setError(null);
     try {
-      // Attach messageIds from categories to each rule
+      // Attach messageIds and duplicateIds from categories to each rule
       const enrichedRules = rules
         .filter(r => r.enabled)
-        .map(r => ({
-          ...r,
-          messageIds: result?.categories.find(c => c.category === r.category)?.messageIds ?? [],
-        }));
+        .map(r => {
+          const cat = result?.categories.find(c => c.category === r.category);
+          return {
+            ...r,
+            messageIds: cat?.messageIds ?? [],
+            duplicateIds: cat?.duplicateIds ?? [],
+          };
+        });
 
       const res = await fetch("/api/intelligence/apply", {
         method: "POST",
@@ -353,73 +359,106 @@ function RuleRow({ rule, onToggle, onSetAction }: {
   onToggle: (id: string) => void;
   onSetAction: (id: string, action: RuleAction) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const actionColor = ACTION_COLORS[rule.action];
+  const subjects = rule.sampleSubjects ?? [];
 
   return (
     <div style={{
       backgroundColor: rule.enabled ? B.white : B.bgMid,
       border: `1px solid ${rule.enabled ? B.border : B.bgMid}`,
-      padding: "16px 20px",
-      display: "flex",
-      alignItems: "center",
-      gap: 16,
       opacity: rule.enabled ? 1 : 0.5,
       transition: "all 0.2s",
     }}>
-      {/* Toggle */}
-      <button
-        onClick={() => onToggle(rule.id)}
-        style={{
-          width: 36, height: 20, borderRadius: 10, flexShrink: 0,
-          backgroundColor: rule.enabled ? B.teal : B.border,
-          position: "relative", transition: "background-color 0.2s", border: "none",
-        }}
-      >
-        <span style={{
-          position: "absolute", top: 2, left: rule.enabled ? 18 : 2,
-          width: 16, height: 16, borderRadius: "50%", backgroundColor: B.white,
-          transition: "left 0.2s",
-        }} />
-      </button>
+      <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 16 }}>
+        {/* Toggle */}
+        <button
+          onClick={() => onToggle(rule.id)}
+          style={{
+            width: 36, height: 20, borderRadius: 10, flexShrink: 0,
+            backgroundColor: rule.enabled ? B.teal : B.border,
+            position: "relative", transition: "background-color 0.2s", border: "none",
+          }}
+        >
+          <span style={{
+            position: "absolute", top: 2, left: rule.enabled ? 18 : 2,
+            width: 16, height: 16, borderRadius: "50%", backgroundColor: B.white,
+            transition: "left 0.2s",
+          }} />
+        </button>
 
-      {/* Icon + category */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
-        <span style={{ fontSize: 18, flexShrink: 0 }}>{CATEGORY_ICONS[rule.category]}</span>
-        <div style={{ minWidth: 0 }}>
-          <p style={{ color: B.navy, fontWeight: 700, fontSize: 14 }}>{rule.category}</p>
-          <p style={{ color: B.muted, fontSize: 11 }}>{rule.emailCount.toLocaleString()} emails</p>
+        {/* Icon + category */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
+          <span style={{ fontSize: 18, flexShrink: 0 }}>{CATEGORY_ICONS[rule.category]}</span>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ color: B.navy, fontWeight: 700, fontSize: 14 }}>{rule.category}</p>
+            <p style={{ color: B.muted, fontSize: 11 }}>{rule.emailCount.toLocaleString()} emails</p>
+          </div>
         </div>
+
+        {/* Action selector */}
+        <select
+          value={rule.action}
+          onChange={e => onSetAction(rule.id, e.target.value as RuleAction)}
+          disabled={!rule.enabled}
+          style={{
+            ...actionColor,
+            fontSize: 11, fontWeight: 700, letterSpacing: "0.08em",
+            padding: "4px 8px", border: "none", cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          <option value="move">Move to folder</option>
+          <option value="delete">Move to bin</option>
+          <option value="delete-duplicates">Bin duplicates only</option>
+          <option value="unsubscribe">Unsubscribe + Bin</option>
+          <option value="keep">Keep in inbox</option>
+        </select>
+
+        {/* Folder label */}
+        {rule.action === "move" && rule.folder && (
+          <span style={{ color: B.teal, fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
+            → {rule.folder}
+          </span>
+        )}
+
+        {/* Confidence */}
+        <span style={{ color: B.muted, fontSize: 10, fontWeight: 600, flexShrink: 0 }}>
+          {rule.confidence}%
+        </span>
+
+        {/* Expand button */}
+        {subjects.length > 0 && (
+          <button
+            onClick={() => setExpanded(e => !e)}
+            style={{ color: B.muted, fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", flexShrink: 0, border: `1px solid ${B.border}`, padding: "3px 8px" }}
+            className="uppercase hover:opacity-70 transition-opacity"
+          >
+            {expanded ? "▲ Hide" : "▼ Preview"}
+          </button>
+        )}
       </div>
 
-      {/* Action selector */}
-      <select
-        value={rule.action}
-        onChange={e => onSetAction(rule.id, e.target.value as RuleAction)}
-        disabled={!rule.enabled}
-        style={{
-          ...actionColor,
-          fontSize: 11, fontWeight: 700, letterSpacing: "0.08em",
-          padding: "4px 8px", border: "none", cursor: "pointer",
-          fontFamily: "inherit",
-        }}
-      >
-        <option value="move">Move to folder</option>
-        <option value="delete">Delete</option>
-        <option value="unsubscribe">Unsubscribe + Delete</option>
-        <option value="keep">Keep in inbox</option>
-      </select>
-
-      {/* Folder label */}
-      {rule.action === "move" && rule.folder && (
-        <span style={{ color: B.teal, fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
-          → {rule.folder}
-        </span>
+      {/* Subject preview panel */}
+      {expanded && subjects.length > 0 && (
+        <div style={{ borderTop: `1px solid ${B.border}`, padding: "12px 20px 16px", backgroundColor: B.bgMid }}>
+          <p style={{ color: B.muted, fontSize: 9, fontWeight: 700, letterSpacing: "0.15em", marginBottom: 8 }} className="uppercase">
+            Sample subjects ({subjects.length} shown)
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {subjects.map((s, i) => (
+              <p key={i} style={{ color: B.navy, fontSize: 12, fontWeight: 300, lineHeight: 1.4 }} className="truncate">
+                · {s}
+              </p>
+            ))}
+          </div>
+          {rule.emailCount > subjects.length && (
+            <p style={{ color: B.muted, fontSize: 11, marginTop: 8 }}>
+              + {(rule.emailCount - subjects.length).toLocaleString()} more emails not shown
+            </p>
+          )}
+        </div>
       )}
-
-      {/* Confidence */}
-      <span style={{ color: B.muted, fontSize: 10, fontWeight: 600, flexShrink: 0 }}>
-        {rule.confidence}%
-      </span>
     </div>
   );
 }
