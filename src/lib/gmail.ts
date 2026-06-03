@@ -32,9 +32,13 @@ async function fetchGmailBatch(
     ? "metadataHeaders=From&metadataHeaders=Date&metadataHeaders=Subject"
     : "metadataHeaders=From&metadataHeaders=Date";
 
-  for (let i = 0; i < items.length; i += 100) {
+  // Each sub-request in the batch counts as 1 query against the 15,000 QPM limit.
+  // With chunks of 50 and a 300ms delay we stay well under 250 QPS.
+  const CHUNK = 50;
+
+  for (let i = 0; i < items.length; i += CHUNK) {
     if (i > 0 && delayMs > 0) await sleep(delayMs);
-    const chunk = items.slice(i, i + 100);
+    const chunk = items.slice(i, i + CHUNK);
     const batchBody = chunk.map((m, j) => [
       `--batch_boundary`,
       `Content-Type: application/http`,
@@ -44,14 +48,21 @@ async function fetchGmailBatch(
       ``,
     ].join("\r\n")).join("\r\n") + "\r\n--batch_boundary--";
 
-    const batchRes = await fetch("https://www.googleapis.com/batch/gmail/v1", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "multipart/mixed; boundary=batch_boundary",
-      },
-      body: batchBody,
-    });
+    // Retry up to 3 times on rate-limit errors with exponential backoff
+    let batchRes: Response | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await sleep(1000 * Math.pow(2, attempt));
+      batchRes = await fetch("https://www.googleapis.com/batch/gmail/v1", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/mixed; boundary=batch_boundary",
+        },
+        body: batchBody,
+      });
+      if (batchRes.status !== 429 && batchRes.status !== 403) break;
+    }
+    if (!batchRes) continue;
 
     const raw = await batchRes.text();
     const parts = raw.split(/--[^\r\n]+/).filter(p => p.includes("{"));
@@ -100,8 +111,8 @@ export async function fetchGmailMessages(token: string, limit = 10_000): Promise
     const items: { id: string }[] = (listData.messages ?? []).slice(0, limit - messages.length);
     if (items.length === 0) break;
 
-    // 150ms delay between batches to avoid rate limits
-    const batch = await fetchGmailBatch(token, items, false, 150);
+    // 400ms delay between chunks of 50 → ~125 QPS, well under the 250 QPS limit
+    const batch = await fetchGmailBatch(token, items, false, 400);
     messages.push(...batch);
 
     pageToken = listData.nextPageToken;
@@ -118,8 +129,8 @@ export async function fetchGmailMessagesLimited(token: string, limit: number): P
   const listData = await listRes.json();
   const items: { id: string }[] = (listData.messages ?? []).slice(0, limit);
   if (items.length === 0) return [];
-  // 200ms delay between batches of 100 to stay within rate limits
-  return fetchGmailBatch(token, items, true, 200);
+  // 400ms delay between chunks of 50 to stay within rate limits
+  return fetchGmailBatch(token, items, true, 400);
 }
 
 /** Move messages to Trash — works with gmail.modify scope. */
