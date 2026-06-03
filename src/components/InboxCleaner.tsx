@@ -132,7 +132,7 @@ export function InboxCleaner({ userEmail }: { userEmail: string }) {
               <li>Sign out and sign back in — your session may have expired</li>
               <li>For Gmail: make sure you tick <strong>"Read, compose and delete all your email"</strong> on the permissions screen</li>
               <li>If the error persists, try a different browser or disable extensions</li>
-              <li>Contact us at <a href="mailto:hello@facilitateconsult.co.uk" style={{ color: "#4B2C42", textDecoration: "underline" }}>hello@facilitateconsult.co.uk</a></li>
+              <li>Contact us at <a href="mailto:ambrin@facilitateconsultancy.com" style={{ color: "#4B2C42", textDecoration: "underline" }}>ambrin@facilitateconsultancy.com</a></li>
             </ol>
           </div>
         </div>
