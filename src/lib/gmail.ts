@@ -121,6 +121,7 @@ export async function fetchGmailMessagesLimited(token: string, limit: number): P
   return fetchGmailBatch(token, items, true, 200);
 }
 
+/** Move messages to Trash — works with gmail.modify scope. */
 export async function batchDeleteGmailMessages(
   token: string,
   ids: string[]
@@ -128,27 +129,24 @@ export async function batchDeleteGmailMessages(
   let deleted = 0;
   let failed = 0;
 
+  // Use batchModify to add TRASH label and remove INBOX — no permanent delete scope needed
   for (let i = 0; i < ids.length; i += 1000) {
     const chunk = ids.slice(i, i + 1000);
     try {
-      const url = `${BASE}/messages/batchDelete`;
-      const res = await fetch(url, {
+      const res = await fetch(`${BASE}/messages/batchModify`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ ids: chunk }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: chunk, addLabelIds: ["TRASH"], removeLabelIds: ["INBOX"] }),
       });
       if (res.ok || res.status === 204) {
         deleted += chunk.length;
       } else {
         const body = await res.text().catch(() => "");
-        console.error(`Gmail batchDelete ${res.status}: ${body}`);
+        console.error(`Gmail trash ${res.status}: ${body}`);
         failed += chunk.length;
       }
     } catch (e) {
-      console.error("Gmail batchDelete error:", e);
+      console.error("Gmail trash error:", e);
       failed += chunk.length;
     }
   }
