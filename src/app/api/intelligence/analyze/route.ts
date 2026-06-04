@@ -3,12 +3,23 @@ import { auth } from "@/auth";
 import { fetchInboxMessages } from "@/lib/graph";
 import { fetchGmailMessagesLimited } from "@/lib/gmail";
 import { analyseMessages } from "@/lib/classify";
+import { checkRateLimit } from "@/lib/rateLimit";
 import type { SenderGroup } from "@/types";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.accessToken) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Rate limit: max 3 analyses per user per 5 minutes
+  const userKey = `analyze:${session.user?.email ?? "unknown"}`;
+  const { allowed, retryAfterMs } = checkRateLimit(userKey, 3, 5 * 60 * 1000);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: `Too many requests. Please wait ${Math.ceil(retryAfterMs / 1000)} seconds before analysing again.` },
+      { status: 429 }
+    );
   }
 
   // Client sends its full sender list so we can expand message IDs
@@ -52,6 +63,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("Intelligence analyze error:", msg);
+    return NextResponse.json({ error: "Failed to analyse inbox. Please sign out and sign back in." }, { status: 500 });
   }
 }

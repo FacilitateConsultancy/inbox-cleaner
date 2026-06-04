@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
       : await batchDeleteMessages(session.accessToken, ids);
     return NextResponse.json(result);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Unknown error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("Delete error:", e instanceof Error ? e.message : e);
+    return NextResponse.json({ error: "Failed to delete emails. Please sign out and sign back in." }, { status: 500 });
   }
 }

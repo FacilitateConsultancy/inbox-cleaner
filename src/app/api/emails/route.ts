@@ -2,12 +2,23 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { fetchInboxMessages } from "@/lib/graph";
 import { fetchGmailMessages } from "@/lib/gmail";
+import { checkRateLimit } from "@/lib/rateLimit";
 import type { SenderGroup } from "@/types";
 
 export async function GET() {
   const session = await auth();
   if (!session?.accessToken) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Rate limit: max 5 scans per user per 2 minutes
+  const userKey = `scan:${session.user?.email ?? "unknown"}`;
+  const { allowed, retryAfterMs } = checkRateLimit(userKey, 5, 2 * 60 * 1000);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: `Too many requests. Please wait ${Math.ceil(retryAfterMs / 1000)} seconds before scanning again.` },
+      { status: 429 }
+    );
   }
 
   try {
@@ -33,7 +44,7 @@ export async function GET() {
     const senders = [...map.values()].sort((a, b) => b.count - a.count);
     return NextResponse.json({ senders, total: messages.length });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Unknown error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("Emails fetch error:", e instanceof Error ? e.message : e);
+    return NextResponse.json({ error: "Failed to fetch emails. Please sign out and sign back in." }, { status: 500 });
   }
 }

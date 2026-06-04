@@ -27,6 +27,26 @@ export async function POST(req: NextRequest) {
     : await fetchUnsubscribeInfo(session.accessToken, messageId);
 
   if (info.postUrl) {
+    // SSRF protection: only allow public HTTPS URLs, block internal/metadata addresses
+    try {
+      const parsed = new URL(info.postUrl);
+      const host = parsed.hostname.toLowerCase();
+      const isInternal =
+        parsed.protocol !== "https:" ||
+        host === "localhost" ||
+        host === "169.254.169.254" ||
+        host.startsWith("192.168.") ||
+        host.startsWith("10.") ||
+        host.startsWith("172.16.") ||
+        host.endsWith(".internal") ||
+        host.endsWith(".local");
+      if (isInternal) {
+        return NextResponse.json({ method: "none" } as UnsubscribeResult);
+      }
+    } catch {
+      return NextResponse.json({ method: "none" } as UnsubscribeResult);
+    }
+
     try {
       const res = await fetch(info.postUrl, {
         method: "POST",
