@@ -12,145 +12,154 @@ const PERSONAL_DOMAINS = new Set([
   "hotmail.com","hotmail.co.uk","hotmail.fr","outlook.com","outlook.co.uk",
   "live.com","live.co.uk","live.fr","icloud.com","me.com","mac.com","msn.com",
   "protonmail.com","proton.me","pm.me","tutanota.com","fastmail.com",
-  "aol.com","btinternet.com","virginmedia.com","sky.com","ntlworld.com",
+  "aol.com","btinternet.com","ntlworld.com",
 ]);
 
-/** Email address prefixes that are NEVER a real person */
-const AUTOMATED_PREFIXES = new Set([
+/**
+ * These local parts (the bit before @) are NEVER a real person.
+ * Any of these → skip "important" classification entirely.
+ */
+const NON_PERSON_LOCALS = new Set([
+  // Automated
   "noreply","no-reply","donotreply","do-not-reply","do_not_reply",
   "automated","system","mailer","mailer-daemon","bounce","bounces",
-  "postmaster","daemon","robot","bot",
+  "postmaster","daemon","robot","bot","blackhole",
+  // Role / functional
+  "info","information","hello","hey","hi","team","staff","admin","webmaster",
+  "contact","sales","hr","finance","accounts","reception","enquiries","enquiry",
+  "query","feedback","care","office","general","help","support","helpdesk",
+  "service","customer","customerservice","customercare","cs","billing","payment",
+  "payments","orders","order","shipping","delivery","dispatch","tracking",
+  "newsletter","news","updates","update","alerts","alert","notification",
+  "notifications","marketing","promo","promotions","offers","deals","deals",
+  "mail","email","web","online","digital","social","media","press","pr",
+  "comms","communications","editorial","broadcast","campaigns","campaign",
+  "security","verify","verification","password","account","accounts",
+  "privacy","legal","compliance","gdpr","dpo","policy",
+  // Brand/product names that look like words but aren't people
+  "uber","lyft","prime","fortnite","spotify","netflix","amazon","google",
+  "apple","microsoft","paypal","ebay","etsy","skype","pinterest","snapchat",
+  "instagram","facebook","twitter","tiktok","discord","twitch","youtube",
+  "wordpress","shopify","stripe","klarna","revolut","monzo","starling",
+  "activity","awards","product","new","welcome","confirm","ohno","location",
+  "registration","applicantsupport","mixr","hey","swagbucks","mixr",
 ]);
 
-/** Prefixes that strongly suggest newsletters */
-const NEWSLETTER_PREFIXES = new Set([
-  "newsletter","newsletters","digest","weekly","daily","monthly",
-  "roundup","bulletin","edition","briefing","dispatch","updates",
-  "editorial","press","media","blog","post","posts",
-]);
-
-/** Prefixes that strongly suggest promotions/marketing */
-const PROMO_PREFIXES = new Set([
-  "marketing","promo","promotions","offers","deals","sale","sales",
-  "discount","discounts","voucher","coupon","coupons","savings",
-  "campaigns","campaign","eshots","eshot","broadcast",
-]);
-
-/** Prefixes that strongly suggest transactional emails */
-const TRANSACTIONAL_PREFIXES = new Set([
-  "orders","order","receipts","receipt","invoice","invoices","billing",
-  "payments","payment","shipping","delivery","dispatch","tracking",
-  "booking","bookings","confirmation","confirmations","tickets","ticket",
-  "reservation","reservations","statement","statements","account",
-  "notifications","notification","alerts","alert","security","verify",
-  "verification","password","support","helpdesk","service",
-]);
-
-function localPart(email: string): string {
-  return email.split("@")[0] ?? "";
-}
-
-function domain(email: string): string {
-  return email.split("@")[1] ?? "";
-}
+function localPart(email: string): string { return email.split("@")[0] ?? ""; }
+function domainOf(email: string): string  { return email.split("@")[1] ?? ""; }
 
 function has(str: string, list: string[]): boolean {
   return list.some(p => str.includes(p));
 }
 
-/** Does the local part look like a real person's name? e.g. john.smith, sarah_jones, jsmith */
+/**
+ * Only considers firstname.lastname or firstname_lastname patterns as person addresses.
+ * Single-word locals (info, help, service, uber, prime…) are NOT people.
+ */
 function looksLikePersonAddress(local: string): boolean {
-  return (
-    /^[a-z]{2,}[._-][a-z]{2,}\d{0,4}$/.test(local) || // first.last or first_last
-    /^[a-z]{2,15}\d{0,4}$/.test(local)                  // firstname or nickname
-  ) && !AUTOMATED_PREFIXES.has(local) && !NEWSLETTER_PREFIXES.has(local) && !PROMO_PREFIXES.has(local);
+  if (NON_PERSON_LOCALS.has(local)) return false;
+  // Require a separator: john.smith, sarah_jones, j.bloggs
+  return /^[a-z]{2,}[._-][a-z]{2,}\d{0,4}$/.test(local);
 }
 
-/** Does the display name look like a real person? e.g. "John Smith", "Sarah Jones" */
+/** "John Smith", "Sarah Jones" — two capitalised words */
 function looksLikePersonName(name: string): boolean {
   return /^[A-Z][a-zÀ-ÿ'-]{1,20}( [A-Z][a-zÀ-ÿ'-]{1,20}){1,2}$/.test(name);
 }
 
 // ── Domain lists ──────────────────────────────────────────────────────────────
 
-const GOVT_EDU_DOMAINS = [
+const GOVT_SUFFIXES = [
   ".gov.uk",".gov",".edu",".ac.uk",".sch.uk",".nhs.uk",".nhs.net",
   ".mil",".police.uk",".mod.uk",".parliament.uk",
 ];
 
-const BANK_DOMAINS = [
+const BANK_SNIPPETS = [
   "barclays.","hsbc.","lloyds.","natwest.","santander.","nationwide.",
   "monzo.","starling.","revolut.","americanexpress.","amex.","firstdirect.",
   "metrobank.","tsb.","halifax.","ulsterbank.","bankofscotland.","rbs.",
   "clydesdale.","yorkshirebank.","cooperativebank.","co-operativebank.",
-  "chase.co.uk","virgin.money","virginmoney.","post.office","postoffice.",
-  "aldermore.","shawbrook.","marcus.","aldermore.","atom.bank","atombank.",
-  "pensionbee.","nutmeg.","vanguard.","fidelity.","hargreaveslansdown.",
-  "hl.co.uk","ajbell.","abrdn.","interactive.investor",
+  "chase.co.uk","virginmoney.","postoffice.","aldermore.","shawbrook.",
+  "marcus.","atombank.","pensionbee.","nutmeg.","vanguard.","fidelity.",
+  "hl.co.uk","ajbell.","abrdn.","interactiveinvestor.",
 ];
 
-const UTILITY_DOMAINS = [
-  "bt.com","btyahoo.","virginmedia.","sky.","ee.co.uk","vodafone.","o2.co.uk",
-  "three.co.uk","giffgaff.","smarty.","id.mobile","tesco.mobile",
-  "britishgas.","centrica.","eon.","sse.","octopusenergy.","bulb.",
-  "ovoenergy.","edfenergy.","npower.","scottishpower.","utilita.","so.energy",
+const UTILITY_SNIPPETS = [
+  "bt.com","virginmedia.","sky.","ee.co.uk","ee-email","email-ee",
+  "vodafone.","o2.co.uk","three.co.uk","giffgaff.","smarty.","iD.mobile",
+  "britishgas.","centrica.","eon.","sse.","octopusenergy.","ovoenergy.",
+  "edfenergy.","npower.","scottishpower.","utilita.","so.energy",
   "thameswater.","unitedutilities.","severn-trent.","severntr.",
-  "anglianwater.","yorkshirewater.","affinity.water","southern.water",
-  "openreach.","talktalk.","plusnet.","hyperoptic.","cityfibre.",
-  "council.","councillor.",
+  "anglianwater.","yorkshirewater.","openreach.","talktalk.","plusnet.",
+  "hyperoptic.","council.",
 ];
 
-const RECRUITER_DOMAINS = [
-  "linkedin.","indeed.","reed.co.uk","cvlibrary.","totaljobs.","jobsite.",
+const HEALTHCARE_SNIPPETS = [
+  "nhs.","hospital.","clinic.","dental.","pharmacy.","gp.","surgery.",
+];
+
+const RECRUITER_SNIPPETS = [
+  "linkedin.","indeed.","reed.co","cvlibrary.","totaljobs.","jobsite.",
   "monster.","glassdoor.","ziprecruiter.","workable.","greenhouse.io",
-  "lever.co","smartrecruiters.","taleo.","icims.","myworkdayjobs.",
-  "jobs2web.","recruit.","hireserve.","ats.",
+  "lever.co","smartrecruiters.","myworkdayjobs.","jobs2web.",
 ];
 
-const TRANSACTIONAL_DOMAINS = [
+const TRANSACTIONAL_SNIPPETS = [
   // Retail
   "amazon.","ebay.","etsy.","asos.","next.co","johnlewis.","argos.",
-  "currys.","ao.com","boots.","superdrug.","lloydspharmacy.",
-  "sainsburys.","tesco.","asda.","morrisons.","waitrose.","marksandspencer.",
-  "aldi.","lidl.","iceland.","costco.","bm.","poundland.","wilko.",
-  "primark.","ikea.","dunelm.","homebase.","b&q.","diy.com","screwfix.",
+  "currys.","ao.com","boots.","superdrug.","sainsburys.","tesco.","asda.",
+  "morrisons.","waitrose.","marksandspencer.","aldi.","lidl.","iceland.",
+  "costco.","primark.","ikea.","dunelm.","homebase.","diy.com","screwfix.",
   "toolstation.","halfords.","decathlon.","sportsdirect.","jdsports.",
-  "footlocker.","schuh.","clarks.","ugg.","nike.","adidas.",
-  "zara.","h&m.","mango.","uniqlo.","gap.","banana.republic",
-  "thewhitecompany.","anthropologie.","urbano.","urbanoutfitters.",
-  "prettylittlething.","boohoo.","misguided.","shein.","missguided.",
-  "riverisland.","newlook.","peacocks.","bonmarche.",
-  "lego.","toyrus.","smythstoys.","hamleys.",
-  "apple.","google.","microsoft.","adobe.","dropbox.","spotify.",
-  "netflix.","disneyplus.","amazon.","paramount.","nowtv.",
-  "sky.","peacocktv.",
+  "footlocker.","schuh.","clarks.","nike.","adidas.","zara.","h&m.",
+  "mango.","uniqlo.","gap.","thewhitecompany.","riverisland.","newlook.",
+  "topshop.","prettylittlething.","boohoo.","shein.","romwe.","fashionnova.",
+  "misguided.","missguided.","bonmarche.","lego.","smythstoys.","hamleys.",
+  "cultbeauty.","lookfantastic.","feelunique.","spacenk.",
+  // Tech / subscriptions
+  "apple.","applemusic.","appletv.","icloud.","itunes.",
+  "google.","microsoft.","adobe.","dropbox.","spotify.","spotifymail.",
+  "netflix.","disneyplus.","amazon prime","nowtv.","paramount.",
+  "epicgames.","steam.","playstation.","xbox.","nintendo.",
+  "studentbeans.","unidays.",
   // Payments
-  "paypal.","stripe.","klarna.","clearpay.","laybuy.","openpay.",
-  "paym.","moneybox.","gocardless.","sumup.","square.",
+  "paypal.","stripe.","klarna.","clearpay.","laybuy.","gocardless.",
+  "sumup.","square.",
   // Food delivery
   "deliveroo.","justeat.","ubereats.","hungryhouse.",
-  // Delivery couriers
+  // Ride / delivery apps
+  "uber.","lyft.","deliveryapp.",
+  // Couriers
   "royalmail.","evri.","dpd.","dhl.","fedex.","ups.",
-  "parcelforce.","yodel.","whistl.","hermes.","collectplus.",
-  "inpost.","dpdlocal.",
-  // Travel & hospitality
+  "parcelforce.","yodel.","whistl.","inpost.","dpdlocal.",
+  // Travel
   "booking.com","airbnb.","hotels.com","expedia.","skyscanner.",
   "kayak.","lastminute.","trivago.","tripadvisor.",
-  "trainline.","nationalrail.","avanti.","gwr.","lner.","southeastern.",
-  "eurostar.","tfl.gov","heathrow.","gatwick.","stansted.",
-  "ryanair.","easyjet.","britishairways.","ba.com","virginatlantic.",
-  "jet2.","tui.","thomascook.",
-  // Tickets / events
+  "trainline.","nationalrail.","avanti.","gwr.","lner.",
+  "eurostar.","tfl.gov","ryanair.","easyjet.","britishairways.",
+  "ba.com","virginatlantic.","jet2.","tui.",
+  // Events / tickets
   "eventbrite.","ticketmaster.","seetickets.","axs.com","gigsandtours.",
-  "songkick.","wegottickets.",
-  // Subscriptions / media
-  "times.","telegraph.","guardian.","bbc.","ft.com","economist.",
+  // Survey / rewards
+  "usertesting.","toluna.","surveymonkey.","swagbucks.","prolific.",
+  "respondent.","userinterviews.","rebatekey.","swagbucksemail.",
+  // Misc services
+  "snapfish.","moonpig.","funkypigeon.","photobox.",
+  "zoho.","zohocorp.","salesforce.","hubspot.",
+  "popworld.","aloyoga.","mixr.",
+  "skype.","emails.skype","email.skype",
 ];
 
-const NEWSLETTER_DOMAINS = [
-  "substack.","substack.com","beehiiv.","convertkit.","mailchimp.",
-  "buttondown.","revue.","ghost.io","campaign-monitor.","constantcontact.",
+const NEWSLETTER_SNIPPETS = [
+  "substack.","beehiiv.","convertkit.","mailchimp.",
+  "buttondown.","ghost.io","campaign-monitor.","constantcontact.",
   "sendgrid.","klaviyo.","brevo.","sendinblue.",
+];
+
+const SOCIAL_SNIPPETS = [
+  "pinterest.","notifications.pinterest","facebook.","instagram.",
+  "twitter.","tiktok.","snapchat.","linkedin.","tumblr.",
+  "reddit.","discord.","twitch.",
 ];
 
 // ── Main classifier ───────────────────────────────────────────────────────────
@@ -164,108 +173,92 @@ export function classifySender(
   const n     = name.trim();
   const nLow  = n.toLowerCase();
   const local = localPart(e);
-  const dom   = domain(e);
+  const dom   = domainOf(e);
   const isPersonalDomain = PERSONAL_DOMAINS.has(dom);
+  const isNonPerson = NON_PERSON_LOCALS.has(local);
 
-  // ── Step 1: Hard-exclude automated prefixes from "important" ─────────────
-  const isAutomated = AUTOMATED_PREFIXES.has(local) || local.startsWith("noreply") || local.startsWith("no-reply") || local.startsWith("donotreply");
-
-  // ── Step 2: Government / NHS / Education ──────────────────────────────────
-  if (GOVT_EDU_DOMAINS.some(d => dom.endsWith(d))) {
+  // ── 1. Government / NHS / Education TLD ──────────────────────────────────
+  if (GOVT_SUFFIXES.some(s => dom.endsWith(s))) {
     return { bucket: "important", confidence: 96 };
   }
 
-  // ── Step 3: Banks & financial ─────────────────────────────────────────────
-  if (has(dom, BANK_DOMAINS) || has(nLow, ["hmrc","payroll","your pension","dvla","companies house","tax credit"])) {
+  // ── 2. Banks & financial ──────────────────────────────────────────────────
+  if (has(dom, BANK_SNIPPETS) || has(nLow, ["hmrc","payroll","your pension","dvla","companies house","tax credit"])) {
     return { bucket: "important", confidence: 93 };
   }
 
-  // ── Step 4: Utilities & telecoms ─────────────────────────────────────────
-  if (has(dom, UTILITY_DOMAINS)) {
+  // ── 3. Utilities & telecoms ───────────────────────────────────────────────
+  if (has(dom, UTILITY_SNIPPETS)) {
     return { bucket: "important", confidence: 91 };
   }
 
-  // ── Step 5: Healthcare ────────────────────────────────────────────────────
-  if (has(dom, ["nhs.","hospital.","clinic.","dental.","pharmacy.","prescri"]) ||
-      has(nLow, ["nhs","hospital","clinic","dental","pharmacy","dr ","gp surgery","health centre","optician"])) {
+  // ── 4. Healthcare ─────────────────────────────────────────────────────────
+  if (has(dom, HEALTHCARE_SNIPPETS) || has(nLow, ["nhs ","hospital","dental surgery","health centre","gp surgery","optician"])) {
     return { bucket: "important", confidence: 90 };
   }
 
-  // ── Step 6: Recruiters / job boards ──────────────────────────────────────
-  if (has(dom, RECRUITER_DOMAINS) || has(nLow, ["job alert","new job","career opportunity","recruiter","talent acquisition"])) {
+  // ── 5. Recruiters / job boards ────────────────────────────────────────────
+  if (has(dom, RECRUITER_SNIPPETS) || has(nLow, ["job alert","new job","career opportunity","job application","talent acquisition"])) {
     return { bucket: "important", confidence: 86 };
   }
 
-  // ── Step 7: Real person on personal domain ────────────────────────────────
-  if (!isAutomated && isPersonalDomain) {
-    if (count <= 5) {
-      return { bucket: "important", confidence: 85 };
-    }
-    if (count <= 15) {
-      return { bucket: "newsletter", confidence: 70 };
-    }
-  }
-
-  // ── Step 8: Real person on custom domain (low volume, name-like) ──────────
-  if (!isAutomated && !isPersonalDomain && count <= 4) {
-    if (looksLikePersonAddress(local) || looksLikePersonName(n)) {
-      return { bucket: "important", confidence: 78 };
-    }
-  }
-
-  // ── Step 9: Transactional local part prefix ───────────────────────────────
-  if (TRANSACTIONAL_PREFIXES.has(local)) {
-    return { bucket: "transactional", confidence: 85 };
-  }
-
-  // ── Step 10: Known transactional domain ──────────────────────────────────
-  if (has(dom, TRANSACTIONAL_DOMAINS)) {
-    // High-volume from a known retailer = mostly promotional
+  // ── 6. Known transactional domain (BEFORE person checks) ─────────────────
+  if (has(dom, TRANSACTIONAL_SNIPPETS) || has(e, TRANSACTIONAL_SNIPPETS)) {
     if (count >= 20) {
       return { bucket: "promotion", confidence: 82 };
     }
     return { bucket: "transactional", confidence: 88 };
   }
 
-  // ── Step 11: Newsletter platform or prefix ────────────────────────────────
-  if (has(dom, NEWSLETTER_DOMAINS) || NEWSLETTER_PREFIXES.has(local)) {
-    return { bucket: "newsletter", confidence: 90 };
-  }
-  if (has(nLow, ["newsletter","digest","weekly","daily briefing","roundup","bulletin","edition","the latest","this week"])) {
-    return { bucket: "newsletter", confidence: 82 };
+  // ── 7. Social media notifications ────────────────────────────────────────
+  if (has(dom, SOCIAL_SNIPPETS) || has(e, SOCIAL_SNIPPETS)) {
+    return count >= 5
+      ? { bucket: "newsletter", confidence: 78 }
+      : { bucket: "transactional", confidence: 75 };
   }
 
-  // ── Step 12: Promotional prefix or name ──────────────────────────────────
-  if (PROMO_PREFIXES.has(local)) {
-    return { bucket: "promotion", confidence: 85 };
+  // ── 8. Newsletter platforms ───────────────────────────────────────────────
+  if (has(dom, NEWSLETTER_SNIPPETS)) {
+    return { bucket: "newsletter", confidence: 91 };
   }
-  if (has(nLow, ["% off","sale","voucher","discount","coupon","offer","deal","promo","savings","clearance","flash sale"])) {
+
+  // ── 9. Newsletter local part or display name ──────────────────────────────
+  if (["newsletter","digest","weekly","daily","monthly","roundup","bulletin","briefing","editorial"].includes(local) ||
+      has(nLow, ["newsletter","digest","weekly briefing","daily briefing","roundup","bulletin","this week","the latest"])) {
+    return { bucket: "newsletter", confidence: 84 };
+  }
+
+  // ── 10. Promotional local part or display name ────────────────────────────
+  if (["marketing","promo","promotions","offers","deals","sale","sales","discounts","voucher","coupons"].includes(local)) {
+    return { bucket: "promotion", confidence: 86 };
+  }
+  if (has(nLow, ["% off","sale","voucher","discount","coupon","promo","deal","savings","clearance","flash sale","exclusive offer"])) {
     return { bucket: "promotion", confidence: 83 };
   }
 
-  // ── Step 13: Automated + high volume = spam ───────────────────────────────
-  if (isAutomated && count >= 25) {
-    return { bucket: "spam", confidence: 72 };
+  // ── 11. Real person on personal domain (gmail, hotmail, etc.) ────────────
+  if (isPersonalDomain && !isNonPerson) {
+    if (count <= 8)  return { bucket: "important",  confidence: 85 };
+    if (count <= 20) return { bucket: "newsletter",  confidence: 70 };
+    return { bucket: "promotion", confidence: 65 };
   }
 
-  // ── Step 14: Volume-based fallback ───────────────────────────────────────
-  // Low volume, no person signals, automated address = notification/transactional
-  if (isAutomated) {
-    return count >= 10
-      ? { bucket: "promotion", confidence: 60 }
-      : { bucket: "transactional", confidence: 58 };
+  // ── 12. Real person on custom domain (firstname.lastname@company.com) ─────
+  if (!isPersonalDomain && !isNonPerson && count <= 5) {
+    if (looksLikePersonAddress(local) || looksLikePersonName(n)) {
+      return { bucket: "important", confidence: 78 };
+    }
   }
 
-  // Low volume non-personal = could be small business, service, or person
-  if (count <= 3) {
-    return { bucket: "important", confidence: 58 };
+  // ── 13. Automated address fallback ────────────────────────────────────────
+  if (isNonPerson) {
+    if (count >= 25) return { bucket: "spam",        confidence: 72 };
+    if (count >= 8)  return { bucket: "promotion",   confidence: 65 };
+    return { bucket: "transactional", confidence: 60 };
   }
 
-  // Medium volume with no strong signal = newsletter or promotion
-  if (count <= 12) {
-    return { bucket: "newsletter", confidence: 55 };
-  }
-
-  // High volume with no strong signal = promotion
+  // ── 14. Volume-based fallback ─────────────────────────────────────────────
+  if (count <= 3)  return { bucket: "important",  confidence: 55 };
+  if (count <= 12) return { bucket: "newsletter",  confidence: 55 };
   return { bucket: "promotion", confidence: 58 };
 }
