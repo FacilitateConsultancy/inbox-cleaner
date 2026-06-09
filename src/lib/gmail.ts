@@ -106,25 +106,28 @@ export async function fetchGmailMessages(token: string, limit = 5_000): Promise<
   let pageToken: string | undefined;
 
   while (messages.length < limit) {
-    // Use q:"in:inbox" to exclude trashed/moved emails from results
-    const params = new URLSearchParams({
-      maxResults: "500",
-      q: "in:inbox",
-    });
+    const params = new URLSearchParams({ maxResults: "500", labelIds: "INBOX" });
     if (pageToken) params.set("pageToken", pageToken);
 
     const listRes = await gFetch(`/messages?${params}`, token);
     const listData = await listRes.json();
     const items: { id: string }[] = (listData.messages ?? []).slice(0, limit - messages.length);
+
+    console.log(`Gmail page: ${items.length} IDs, total so far: ${messages.length}, hasNextPage: ${!!listData.nextPageToken}`);
+
     if (items.length === 0) break;
 
     // 500ms delay between chunks of 25 → ~50 QPS, well under the 250 QPS limit
     const batch = await fetchGmailBatch(token, items, false, 500);
     messages.push(...batch);
 
+    console.log(`Gmail batch fetched: ${batch.length} messages`);
+
     pageToken = listData.nextPageToken;
     if (!pageToken) break;
   }
+
+  console.log(`Gmail fetch complete: ${messages.length} total messages`);
 
   return messages;
 }
