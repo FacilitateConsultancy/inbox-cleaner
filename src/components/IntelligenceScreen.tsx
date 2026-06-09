@@ -32,22 +32,24 @@ const BUCKET_META: Record<SenderBucket, {
   label: string; icon: string; color: string; bg: string;
   desc: string; safeFromDelete: boolean;
 }> = {
-  important:    { label: "Important Contacts", icon: "⭐", color: "#1B7A34", bg: "#E8F5EC", desc: "Family, employers, banks, healthcare, utilities — keep all", safeFromDelete: true  },
-  transactional:{ label: "Transactional",       icon: "📦", color: B.teal,    bg: "#E6F4F5", desc: "Orders, receipts, deliveries, bookings",                    safeFromDelete: true  },
-  newsletter:   { label: "Newsletters",          icon: "📰", color: "#1C5FA0", bg: "#E8F0FA", desc: "Subscriptions, blogs, digests",                             safeFromDelete: false },
-  promotion:    { label: "Promotions",           icon: "🏷️", color: "#B85C00", bg: "#FFF0E0", desc: "Sales, discounts, marketing campaigns",                    safeFromDelete: false },
-  spam:         { label: "Spam / Low Value",     icon: "🗑️", color: B.plum,   bg: "#F5EEF3", desc: "High-volume irrelevant or unknown senders",                 safeFromDelete: false },
+  important:    { label: "Important Contacts", icon: "⭐", color: "#1B7A34", bg: "#E8F5EC", desc: "Family, friends, employers, healthcare",           safeFromDelete: true  },
+  bills:        { label: "Bills & Finance",     icon: "💳", color: "#1C5FA0", bg: "#E8F0FA", desc: "Banks, utilities, phone companies, HMRC",          safeFromDelete: true  },
+  transactional:{ label: "Transactional",       icon: "📦", color: B.teal,    bg: "#E6F4F5", desc: "Orders, receipts, deliveries, bookings",           safeFromDelete: true  },
+  newsletter:   { label: "Newsletters",          icon: "📰", color: "#7A5C00", bg: "#FFF8E0", desc: "Subscriptions, blogs, digests",                   safeFromDelete: false },
+  promotion:    { label: "Promotions",           icon: "🏷️", color: "#B85C00", bg: "#FFF0E0", desc: "Sales, discounts, marketing campaigns",          safeFromDelete: false },
+  spam:         { label: "Spam / Low Value",     icon: "🗑️", color: B.plum,   bg: "#F5EEF3", desc: "High-volume irrelevant or unknown senders",        safeFromDelete: false },
 };
 
 const DEFAULT_ACTIONS: Record<SenderBucket, { action: BucketAction; folder: string; included: boolean }> = {
-  important:    { action: "keep",   folder: "",            included: true  },
-  transactional:{ action: "keep",   folder: "",            included: true  },
-  newsletter:   { action: "move",   folder: "Newsletters", included: true  },
-  promotion:    { action: "move",   folder: "Promotions",  included: true  },
-  spam:         { action: "delete", folder: "",            included: false }, // OFF by default for safety
+  important:    { action: "keep",   folder: "",              included: true  },
+  bills:        { action: "move",   folder: "Bills & Finance", included: true  },
+  transactional:{ action: "keep",   folder: "",              included: true  },
+  newsletter:   { action: "move",   folder: "Newsletters",   included: true  },
+  promotion:    { action: "move",   folder: "Promotions",    included: true  },
+  spam:         { action: "delete", folder: "",              included: false },
 };
 
-const BUCKET_ORDER: SenderBucket[] = ["important", "transactional", "newsletter", "promotion", "spam"];
+const BUCKET_ORDER: SenderBucket[] = ["important", "bills", "transactional", "newsletter", "promotion", "spam"];
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -60,7 +62,7 @@ export function IntelligenceScreen({ senders, onRescan }: { senders: SenderGroup
   const [doneResult, setDoneResult]   = useState<ApplyResult | null>(null);
   const [error, setError]             = useState<string | null>(null);
   const [collapsed, setCollapsed]     = useState<Record<SenderBucket, boolean>>({
-    important: false, transactional: false, newsletter: false, promotion: false, spam: true,
+    important: false, bills: false, transactional: false, newsletter: false, promotion: false, spam: true,
   });
 
   // Classify all senders instantly (client-side, no API call needed)
@@ -139,7 +141,7 @@ export function IntelligenceScreen({ senders, onRescan }: { senders: SenderGroup
 
   // Group by bucket
   const byBucket = useMemo(() => {
-    const map: Record<SenderBucket, SenderState[]> = { important: [], transactional: [], newsletter: [], promotion: [], spam: [] };
+    const map: Record<SenderBucket, SenderState[]> = { important: [], bills: [], transactional: [], newsletter: [], promotion: [], spam: [] };
     for (const s of senderStates) map[s.bucket].push(s);
     return map;
   }, [senderStates]);

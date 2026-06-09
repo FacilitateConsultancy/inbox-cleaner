@@ -1,4 +1,4 @@
-export type SenderBucket = "important" | "transactional" | "newsletter" | "promotion" | "spam";
+export type SenderBucket = "important" | "bills" | "transactional" | "newsletter" | "promotion" | "spam";
 
 export interface ClassifyResult {
   bucket: SenderBucket;
@@ -179,17 +179,21 @@ export function classifySender(
 
   // ── 1. Government / NHS / Education TLD ──────────────────────────────────
   if (GOVT_SUFFIXES.some(s => dom.endsWith(s))) {
+    // HMRC, DWP, councils etc. → Bills & Finance; NHS/schools → Important
+    if (has(dom, ["hmrc.","dwp.","tax.","council.","gov.uk"]) || has(nLow, ["hmrc","tax credit","council tax","dwp","universal credit"])) {
+      return { bucket: "bills", confidence: 96 };
+    }
     return { bucket: "important", confidence: 96 };
   }
 
-  // ── 2. Banks & financial ──────────────────────────────────────────────────
-  if (has(dom, BANK_SNIPPETS) || has(nLow, ["hmrc","payroll","your pension","dvla","companies house","tax credit"])) {
-    return { bucket: "important", confidence: 93 };
+  // ── 2. Banks & financial → Bills & Finance ───────────────────────────────
+  if (has(dom, BANK_SNIPPETS) || has(nLow, ["hmrc","payroll","your pension","dvla","companies house","tax credit","council tax"])) {
+    return { bucket: "bills", confidence: 94 };
   }
 
-  // ── 3. Utilities & telecoms ───────────────────────────────────────────────
+  // ── 3. Utilities & telecoms → Bills & Finance ────────────────────────────
   if (has(dom, UTILITY_SNIPPETS)) {
-    return { bucket: "important", confidence: 91 };
+    return { bucket: "bills", confidence: 92 };
   }
 
   // ── 4. Healthcare ─────────────────────────────────────────────────────────
