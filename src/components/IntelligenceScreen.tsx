@@ -216,7 +216,10 @@ export function IntelligenceScreen({ senders, onRescan }: { senders: SenderGroup
               {!isCollapsed && (
                 <div style={{ borderTop: `1px solid ${B.border}` }}>
                   {items.map(sender => (
-                    <SenderRow key={sender.email} sender={sender} meta={meta} onUpdate={u => updateSender(sender.email, u)} />
+                    <SenderRow key={sender.email} sender={sender} meta={meta} onUpdate={u => updateSender(sender.email, u)} onChangeBucket={newBucket => {
+                      const def = DEFAULT_ACTIONS[newBucket];
+                      updateSender(sender.email, { bucket: newBucket, action: def.action, folder: def.folder, included: def.included });
+                    }} />
                   ))}
                 </div>
               )}
@@ -297,11 +300,12 @@ export function IntelligenceScreen({ senders, onRescan }: { senders: SenderGroup
 // ── Sender Row ────────────────────────────────────────────────────────────────
 
 function SenderRow({
-  sender, meta, onUpdate,
+  sender, meta, onUpdate, onChangeBucket,
 }: {
   sender: SenderState;
   meta: typeof BUCKET_META[SenderBucket];
   onUpdate: (u: Partial<SenderState>) => void;
+  onChangeBucket: (bucket: SenderBucket) => void;
 }) {
   return (
     <div style={{
@@ -326,14 +330,22 @@ function SenderRow({
         <p style={{ color: B.muted, fontSize: 11, fontWeight: 300, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sender.email}</p>
       </div>
 
+      {/* Bucket override selector */}
+      <select
+        value={sender.bucket}
+        onChange={e => onChangeBucket(e.target.value as SenderBucket)}
+        style={{ fontSize: 10, fontWeight: 700, padding: "3px 6px", border: `1px solid ${meta.color}40`, backgroundColor: meta.bg, color: meta.color, fontFamily: "inherit", cursor: "pointer", flexShrink: 0 }}
+      >
+        <option value="important">⭐ Important</option>
+        <option value="transactional">📦 Transactional</option>
+        <option value="newsletter">📰 Newsletter</option>
+        <option value="promotion">🏷️ Promotion</option>
+        <option value="spam">🗑️ Spam</option>
+      </select>
+
       {/* Email count */}
       <span style={{ color: B.muted, fontSize: 11, fontWeight: 600, flexShrink: 0, backgroundColor: B.bgMid, padding: "2px 8px", borderRadius: 2 }}>
         {sender.count}
-      </span>
-
-      {/* Confidence */}
-      <span style={{ color: sender.confidence >= 85 ? meta.color : B.muted, fontSize: 10, fontWeight: 700, flexShrink: 0, minWidth: 32, textAlign: "right" }}>
-        {sender.confidence}%
       </span>
 
       {/* Action selector — locked to "keep" for safe buckets */}
