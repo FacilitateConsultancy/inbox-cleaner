@@ -113,7 +113,7 @@ const TRANSACTIONAL_SNIPPETS = [
   "toolstation.","halfords.","decathlon.","sportsdirect.","jdsports.",
   "footlocker.","schuh.","clarks.","nike.","adidas.","zara.","h&m.",
   "mango.","uniqlo.","gap.","thewhitecompany.","riverisland.","newlook.",
-  "topshop.","prettylittlething.","boohoo.","shein.","romwe.","fashionnova.",
+  "topshop.","prettylittlething.","boohoo.","shein.","sheinmail.","romwe.","edm.romwe","fashionnova.",
   "misguided.","missguided.","bonmarche.","lego.","smythstoys.","hamleys.",
   "cultbeauty.","lookfantastic.","feelunique.","spacenk.",
   // Tech / subscriptions
@@ -202,52 +202,54 @@ export function classifySender(
     return { bucket: "important", confidence: 86 };
   }
 
-  // ── 6. Known transactional domain (BEFORE person checks) ─────────────────
-  if (has(dom, TRANSACTIONAL_SNIPPETS) || has(e, TRANSACTIONAL_SNIPPETS)) {
+  // ── 6. Real person on personal domain (gmail, hotmail, etc.) ────────────
+  // Must run BEFORE transactional check — a person's gmail is always important
+  if (isPersonalDomain && !isNonPerson) {
+    if (count <= 10) return { bucket: "important",  confidence: 85 };
+    if (count <= 25) return { bucket: "newsletter",  confidence: 70 };
+    return { bucket: "promotion", confidence: 65 };
+  }
+
+  // ── 7. Real person on custom domain ──────────────────────────────────────
+  // Must run BEFORE transactional check — victoria.jones@anycompany.com is a person
+  if (!isPersonalDomain && !isNonPerson && count <= 12) {
+    if (looksLikePersonAddress(local) || looksLikePersonName(n)) {
+      return { bucket: "important", confidence: 80 };
+    }
+  }
+
+  // ── 8. Known transactional domain ────────────────────────────────────────
+  if (has(dom, TRANSACTIONAL_SNIPPETS)) {
     if (count >= 20) {
       return { bucket: "promotion", confidence: 82 };
     }
     return { bucket: "transactional", confidence: 88 };
   }
 
-  // ── 7. Social media notifications ────────────────────────────────────────
-  if (has(dom, SOCIAL_SNIPPETS) || has(e, SOCIAL_SNIPPETS)) {
+  // ── 9. Social media notifications ────────────────────────────────────────
+  if (has(dom, SOCIAL_SNIPPETS)) {
     return count >= 5
       ? { bucket: "newsletter", confidence: 78 }
       : { bucket: "transactional", confidence: 75 };
   }
 
-  // ── 8. Newsletter platforms ───────────────────────────────────────────────
+  // ── 10. Newsletter platforms ──────────────────────────────────────────────
   if (has(dom, NEWSLETTER_SNIPPETS)) {
     return { bucket: "newsletter", confidence: 91 };
   }
 
-  // ── 9. Newsletter local part or display name ──────────────────────────────
+  // ── 11. Newsletter local part or display name ─────────────────────────────
   if (["newsletter","digest","weekly","daily","monthly","roundup","bulletin","briefing","editorial"].includes(local) ||
       has(nLow, ["newsletter","digest","weekly briefing","daily briefing","roundup","bulletin","this week","the latest"])) {
     return { bucket: "newsletter", confidence: 84 };
   }
 
-  // ── 10. Promotional local part or display name ────────────────────────────
+  // ── 12. Promotional local part or display name ────────────────────────────
   if (["marketing","promo","promotions","offers","deals","sale","sales","discounts","voucher","coupons"].includes(local)) {
     return { bucket: "promotion", confidence: 86 };
   }
   if (has(nLow, ["% off","sale","voucher","discount","coupon","promo","deal","savings","clearance","flash sale","exclusive offer"])) {
     return { bucket: "promotion", confidence: 83 };
-  }
-
-  // ── 11. Real person on personal domain (gmail, hotmail, etc.) ────────────
-  if (isPersonalDomain && !isNonPerson) {
-    if (count <= 8)  return { bucket: "important",  confidence: 85 };
-    if (count <= 20) return { bucket: "newsletter",  confidence: 70 };
-    return { bucket: "promotion", confidence: 65 };
-  }
-
-  // ── 12. Real person on custom domain (firstname.lastname@company.com) ─────
-  if (!isPersonalDomain && !isNonPerson && count <= 5) {
-    if (looksLikePersonAddress(local) || looksLikePersonName(n)) {
-      return { bucket: "important", confidence: 78 };
-    }
   }
 
   // ── 13. Automated address fallback ────────────────────────────────────────
