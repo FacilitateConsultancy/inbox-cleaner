@@ -5,142 +5,267 @@ export interface ClassifyResult {
   confidence: number;
 }
 
-const PERSONAL_DOMAINS = [
-  "gmail.com", "googlemail.com", "yahoo.com", "yahoo.co.uk", "hotmail.com",
-  "hotmail.co.uk", "outlook.com", "live.com", "live.co.uk", "icloud.com",
-  "me.com", "mac.com", "msn.com", "protonmail.com",
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const PERSONAL_DOMAINS = new Set([
+  "gmail.com","googlemail.com","yahoo.com","yahoo.co.uk","yahoo.fr","yahoo.de",
+  "hotmail.com","hotmail.co.uk","hotmail.fr","outlook.com","outlook.co.uk",
+  "live.com","live.co.uk","live.fr","icloud.com","me.com","mac.com","msn.com",
+  "protonmail.com","proton.me","pm.me","tutanota.com","fastmail.com",
+  "aol.com","btinternet.com","virginmedia.com","sky.com","ntlworld.com",
+]);
+
+/** Email address prefixes that are NEVER a real person */
+const AUTOMATED_PREFIXES = new Set([
+  "noreply","no-reply","donotreply","do-not-reply","do_not_reply",
+  "automated","system","mailer","mailer-daemon","bounce","bounces",
+  "postmaster","daemon","robot","bot",
+]);
+
+/** Prefixes that strongly suggest newsletters */
+const NEWSLETTER_PREFIXES = new Set([
+  "newsletter","newsletters","digest","weekly","daily","monthly",
+  "roundup","bulletin","edition","briefing","dispatch","updates",
+  "editorial","press","media","blog","post","posts",
+]);
+
+/** Prefixes that strongly suggest promotions/marketing */
+const PROMO_PREFIXES = new Set([
+  "marketing","promo","promotions","offers","deals","sale","sales",
+  "discount","discounts","voucher","coupon","coupons","savings",
+  "campaigns","campaign","eshots","eshot","broadcast",
+]);
+
+/** Prefixes that strongly suggest transactional emails */
+const TRANSACTIONAL_PREFIXES = new Set([
+  "orders","order","receipts","receipt","invoice","invoices","billing",
+  "payments","payment","shipping","delivery","dispatch","tracking",
+  "booking","bookings","confirmation","confirmations","tickets","ticket",
+  "reservation","reservations","statement","statements","account",
+  "notifications","notification","alerts","alert","security","verify",
+  "verification","password","support","helpdesk","service",
+]);
+
+function localPart(email: string): string {
+  return email.split("@")[0] ?? "";
+}
+
+function domain(email: string): string {
+  return email.split("@")[1] ?? "";
+}
+
+function has(str: string, list: string[]): boolean {
+  return list.some(p => str.includes(p));
+}
+
+/** Does the local part look like a real person's name? e.g. john.smith, sarah_jones, jsmith */
+function looksLikePersonAddress(local: string): boolean {
+  return (
+    /^[a-z]{2,}[._-][a-z]{2,}\d{0,4}$/.test(local) || // first.last or first_last
+    /^[a-z]{2,15}\d{0,4}$/.test(local)                  // firstname or nickname
+  ) && !AUTOMATED_PREFIXES.has(local) && !NEWSLETTER_PREFIXES.has(local) && !PROMO_PREFIXES.has(local);
+}
+
+/** Does the display name look like a real person? e.g. "John Smith", "Sarah Jones" */
+function looksLikePersonName(name: string): boolean {
+  return /^[A-Z][a-zÀ-ÿ'-]{1,20}( [A-Z][a-zÀ-ÿ'-]{1,20}){1,2}$/.test(name);
+}
+
+// ── Domain lists ──────────────────────────────────────────────────────────────
+
+const GOVT_EDU_DOMAINS = [
+  ".gov.uk",".gov",".edu",".ac.uk",".sch.uk",".nhs.uk",".nhs.net",
+  ".mil",".police.uk",".mod.uk",".parliament.uk",
 ];
 
-function has(str: string, patterns: string[]): boolean {
-  return patterns.some(p => str.includes(p));
-}
+const BANK_DOMAINS = [
+  "barclays.","hsbc.","lloyds.","natwest.","santander.","nationwide.",
+  "monzo.","starling.","revolut.","americanexpress.","amex.","firstdirect.",
+  "metrobank.","tsb.","halifax.","ulsterbank.","bankofscotland.","rbs.",
+  "clydesdale.","yorkshirebank.","cooperativebank.","co-operativebank.",
+  "chase.co.uk","virgin.money","virginmoney.","post.office","postoffice.",
+  "aldermore.","shawbrook.","marcus.","aldermore.","atom.bank","atombank.",
+  "pensionbee.","nutmeg.","vanguard.","fidelity.","hargreaveslansdown.",
+  "hl.co.uk","ajbell.","abrdn.","interactive.investor",
+];
 
-function hasWord(str: string, words: string[]): boolean {
-  return words.some(w => new RegExp(`\\b${w}\\b`, "i").test(str));
-}
+const UTILITY_DOMAINS = [
+  "bt.com","btyahoo.","virginmedia.","sky.","ee.co.uk","vodafone.","o2.co.uk",
+  "three.co.uk","giffgaff.","smarty.","id.mobile","tesco.mobile",
+  "britishgas.","centrica.","eon.","sse.","octopusenergy.","bulb.",
+  "ovoenergy.","edfenergy.","npower.","scottishpower.","utilita.","so.energy",
+  "thameswater.","unitedutilities.","severn-trent.","severntr.",
+  "anglianwater.","yorkshirewater.","affinity.water","southern.water",
+  "openreach.","talktalk.","plusnet.","hyperoptic.","cityfibre.",
+  "council.","councillor.",
+];
+
+const RECRUITER_DOMAINS = [
+  "linkedin.","indeed.","reed.co.uk","cvlibrary.","totaljobs.","jobsite.",
+  "monster.","glassdoor.","ziprecruiter.","workable.","greenhouse.io",
+  "lever.co","smartrecruiters.","taleo.","icims.","myworkdayjobs.",
+  "jobs2web.","recruit.","hireserve.","ats.",
+];
+
+const TRANSACTIONAL_DOMAINS = [
+  // Retail
+  "amazon.","ebay.","etsy.","asos.","next.co","johnlewis.","argos.",
+  "currys.","ao.com","boots.","superdrug.","lloydspharmacy.",
+  "sainsburys.","tesco.","asda.","morrisons.","waitrose.","marksandspencer.",
+  "aldi.","lidl.","iceland.","costco.","bm.","poundland.","wilko.",
+  "primark.","ikea.","dunelm.","homebase.","b&q.","diy.com","screwfix.",
+  "toolstation.","halfords.","decathlon.","sportsdirect.","jdsports.",
+  "footlocker.","schuh.","clarks.","ugg.","nike.","adidas.",
+  "zara.","h&m.","mango.","uniqlo.","gap.","banana.republic",
+  "thewhitecompany.","anthropologie.","urbano.","urbanoutfitters.",
+  "prettylittlething.","boohoo.","misguided.","shein.","missguided.",
+  "riverisland.","newlook.","peacocks.","bonmarche.",
+  "lego.","toyrus.","smythstoys.","hamleys.",
+  "apple.","google.","microsoft.","adobe.","dropbox.","spotify.",
+  "netflix.","disneyplus.","amazon.","paramount.","nowtv.",
+  "sky.","peacocktv.",
+  // Payments
+  "paypal.","stripe.","klarna.","clearpay.","laybuy.","openpay.",
+  "paym.","moneybox.","gocardless.","sumup.","square.",
+  // Food delivery
+  "deliveroo.","justeat.","ubereats.","hungryhouse.",
+  // Delivery couriers
+  "royalmail.","evri.","dpd.","dhl.","fedex.","ups.",
+  "parcelforce.","yodel.","whistl.","hermes.","collectplus.",
+  "inpost.","dpdlocal.",
+  // Travel & hospitality
+  "booking.com","airbnb.","hotels.com","expedia.","skyscanner.",
+  "kayak.","lastminute.","trivago.","tripadvisor.",
+  "trainline.","nationalrail.","avanti.","gwr.","lner.","southeastern.",
+  "eurostar.","tfl.gov","heathrow.","gatwick.","stansted.",
+  "ryanair.","easyjet.","britishairways.","ba.com","virginatlantic.",
+  "jet2.","tui.","thomascook.",
+  // Tickets / events
+  "eventbrite.","ticketmaster.","seetickets.","axs.com","gigsandtours.",
+  "songkick.","wegottickets.",
+  // Subscriptions / media
+  "times.","telegraph.","guardian.","bbc.","ft.com","economist.",
+];
+
+const NEWSLETTER_DOMAINS = [
+  "substack.","substack.com","beehiiv.","convertkit.","mailchimp.",
+  "buttondown.","revue.","ghost.io","campaign-monitor.","constantcontact.",
+  "sendgrid.","klaviyo.","brevo.","sendinblue.",
+];
+
+// ── Main classifier ───────────────────────────────────────────────────────────
 
 export function classifySender(
   email: string,
   name: string,
   count: number
 ): ClassifyResult {
-  const e = email.toLowerCase();
-  const n = name.toLowerCase();
-  const domain = e.split("@")[1] ?? "";
-  const combined = e + " " + n;
+  const e     = email.toLowerCase().trim();
+  const n     = name.trim();
+  const nLow  = n.toLowerCase();
+  const local = localPart(e);
+  const dom   = domain(e);
+  const isPersonalDomain = PERSONAL_DOMAINS.has(dom);
 
-  // ── IMPORTANT ─────────────────────────────────────────────────────────────
+  // ── Step 1: Hard-exclude automated prefixes from "important" ─────────────
+  const isAutomated = AUTOMATED_PREFIXES.has(local) || local.startsWith("noreply") || local.startsWith("no-reply") || local.startsWith("donotreply");
 
-  // Government / education
-  if (
-    domain.endsWith(".gov.uk") || domain.endsWith(".gov") ||
-    domain.endsWith(".edu") || domain.endsWith(".ac.uk") ||
-    domain.includes(".sch.uk") || domain.includes(".nhs.uk")
-  ) {
-    return { bucket: "important", confidence: 95 };
+  // ── Step 2: Government / NHS / Education ──────────────────────────────────
+  if (GOVT_EDU_DOMAINS.some(d => dom.endsWith(d))) {
+    return { bucket: "important", confidence: 96 };
   }
 
-  // Healthcare
-  if (has(combined, ["nhs", "hospital", "clinic", "surgery", "dental", "gp.", ".gp", "doctor", "pharmacy", "prescri", "optician"])) {
+  // ── Step 3: Banks & financial ─────────────────────────────────────────────
+  if (has(dom, BANK_DOMAINS) || has(nLow, ["hmrc","payroll","your pension","dvla","companies house","tax credit"])) {
+    return { bucket: "important", confidence: 93 };
+  }
+
+  // ── Step 4: Utilities & telecoms ─────────────────────────────────────────
+  if (has(dom, UTILITY_DOMAINS)) {
+    return { bucket: "important", confidence: 91 };
+  }
+
+  // ── Step 5: Healthcare ────────────────────────────────────────────────────
+  if (has(dom, ["nhs.","hospital.","clinic.","dental.","pharmacy.","prescri"]) ||
+      has(nLow, ["nhs","hospital","clinic","dental","pharmacy","dr ","gp surgery","health centre","optician"])) {
     return { bucket: "important", confidence: 90 };
   }
 
-  // Banks & financial institutions
-  const bankDomains = ["barclays", "hsbc", "lloyds", "natwest", "santander", "nationwide",
-    "monzo", "starling", "revolut", "amex", "americanexpress", "firstdirect",
-    "metrobank", "tsb.", "halifax", "ulsterbank", "bankofscotland", "rbs.",
-    "chase.co", "cooperativebank", "co-operativebank", "clydesdale", "yorkshirebank"];
-  if (has(e, bankDomains) || hasWord(n, ["bank", "building society", "payroll", "pension", "hmrc", "dvla"])) {
-    return { bucket: "important", confidence: 92 };
+  // ── Step 6: Recruiters / job boards ──────────────────────────────────────
+  if (has(dom, RECRUITER_DOMAINS) || has(nLow, ["job alert","new job","career opportunity","recruiter","talent acquisition"])) {
+    return { bucket: "important", confidence: 86 };
   }
 
-  // Utilities & telecoms
-  const utilityDomains = ["bt.com", "virginmedia", "sky.com", "ee.co.uk", "vodafone",
-    "o2.co.uk", "three.co.uk", "britishgas", "centrica", ".eon.", "sse.com",
-    "octopusenergy", "bulbenergy", "thameswater", "unitedutilities",
-    "severntr", "anglianwater", "yorkshirewater", "openreach", "talktalk", "plusnet"];
-  if (has(e, utilityDomains)) {
-    return { bucket: "important", confidence: 90 };
+  // ── Step 7: Real person on personal domain ────────────────────────────────
+  if (!isAutomated && isPersonalDomain) {
+    if (count <= 5) {
+      return { bucket: "important", confidence: 85 };
+    }
+    if (count <= 15) {
+      return { bucket: "newsletter", confidence: 70 };
+    }
   }
 
-  // Recruiters / job boards
-  const recruiterDomains = ["linkedin.com", "indeed.", "reed.co", "cvlibrary", "totaljobs",
-    "jobsite", "monster.", "glassdoor", "ziprecruiter", "workable", "greenhouse.io", "lever.co"];
-  if (has(e, recruiterDomains) || hasWord(n, ["recruiter", "hiring", "talent", "career opportunity", "job alert"])) {
-    return { bucket: "important", confidence: 85 };
+  // ── Step 8: Real person on custom domain (low volume, name-like) ──────────
+  if (!isAutomated && !isPersonalDomain && count <= 4) {
+    if (looksLikePersonAddress(local) || looksLikePersonName(n)) {
+      return { bucket: "important", confidence: 78 };
+    }
   }
 
-  // Personal email with low count (likely a real person)
-  if (PERSONAL_DOMAINS.includes(domain) && count <= 5) {
-    return { bucket: "important", confidence: 80 };
+  // ── Step 9: Transactional local part prefix ───────────────────────────────
+  if (TRANSACTIONAL_PREFIXES.has(local)) {
+    return { bucket: "transactional", confidence: 85 };
   }
 
-  // Custom domain, very low volume, not automated
-  const isAutomated = has(e, ["noreply", "no-reply", "donotreply", "notification", "alert", "automated"]);
-  if (!PERSONAL_DOMAINS.includes(domain) && count <= 2 && !isAutomated) {
-    return { bucket: "important", confidence: 75 };
+  // ── Step 10: Known transactional domain ──────────────────────────────────
+  if (has(dom, TRANSACTIONAL_DOMAINS)) {
+    // High-volume from a known retailer = mostly promotional
+    if (count >= 20) {
+      return { bucket: "promotion", confidence: 82 };
+    }
+    return { bucket: "transactional", confidence: 88 };
   }
 
-  // ── TRANSACTIONAL ─────────────────────────────────────────────────────────
-
-  const transactionalDomains = [
-    "amazon.", "ebay.", "etsy.", "paypal.", "stripe.", "klarna.", "clearpay.", "laybuy.",
-    "apple.com", "google.com", "google.co.uk", "microsoft.", "office365.",
-    "deliveroo.", "justeat.", "ubereats.", "royalmail.", "evri.", "dpd.",
-    "dhl.", "fedex.", "ups.", "parcelforce.", "yodel.", "hermes.",
-    "booking.com", "airbnb.", "hotels.com", "expedia.", "skyscanner.", "kayak.",
-    "trainline.", "nationalrail.", "tfl.gov",
-    "eventbrite.", "ticketmaster.", "seetickets.",
-    "netflix.", "spotify.", "disneyplus.", "amazon prime",
-    "asos.", "next.co", "johnlewis.", "argos.", "currys.", "ao.com",
-    "boots.", "sainsburys.", "tesco.", "marksandspencer.", "waitrose.",
-    "asda.", "morrisons.", "primark.", "ikea.",
-  ];
-  if (has(e, transactionalDomains)) {
-    return { bucket: "transactional", confidence: 90 };
+  // ── Step 11: Newsletter platform or prefix ────────────────────────────────
+  if (has(dom, NEWSLETTER_DOMAINS) || NEWSLETTER_PREFIXES.has(local)) {
+    return { bucket: "newsletter", confidence: 90 };
   }
-  if (hasWord(n, ["order", "receipt", "invoice", "delivery", "dispatch", "booking", "ticket", "reservation", "your shipment"])) {
-    return { bucket: "transactional", confidence: 84 };
+  if (has(nLow, ["newsletter","digest","weekly","daily briefing","roundup","bulletin","edition","the latest","this week"])) {
+    return { bucket: "newsletter", confidence: 82 };
   }
 
-  // ── NEWSLETTER ────────────────────────────────────────────────────────────
-
-  const newsletterDomains = ["substack.", "beehiiv.", "convertkit.", "mailchimp.", "buttondown.", "revue."];
-  if (has(e, newsletterDomains) || has(combined, ["newsletter", "digest", "weekly", "briefing", "roundup", "bulletin", "edition"])) {
-    return { bucket: "newsletter", confidence: 88 };
+  // ── Step 12: Promotional prefix or name ──────────────────────────────────
+  if (PROMO_PREFIXES.has(local)) {
+    return { bucket: "promotion", confidence: 85 };
   }
-  // High-volume personal domain = likely subscribed newsletter
-  if (PERSONAL_DOMAINS.includes(domain) && count >= 10) {
-    return { bucket: "newsletter", confidence: 72 };
+  if (has(nLow, ["% off","sale","voucher","discount","coupon","offer","deal","promo","savings","clearance","flash sale"])) {
+    return { bucket: "promotion", confidence: 83 };
   }
 
-  // ── PROMOTION ─────────────────────────────────────────────────────────────
-
-  const promoAddresses = ["marketing@", "promo@", "offers@", "deals@", "promotions@",
-    "sale@", "news@", "updates@", "hello@", "info@", "noreply@", "no-reply@", "donotreply@"];
-  if (has(e, promoAddresses) && count >= 5) {
-    return { bucket: "promotion", confidence: 78 };
-  }
-  if (hasWord(n, ["sale", "offer", "deal", "discount", "voucher", "coupon", "promo", "savings", "clearance", "flash sale"]) && count >= 3) {
-    return { bucket: "promotion", confidence: 82 };
-  }
-  // High-volume commercial sender
-  if (count >= 15) {
-    return { bucket: "promotion", confidence: 62 };
+  // ── Step 13: Automated + high volume = spam ───────────────────────────────
+  if (isAutomated && count >= 25) {
+    return { bucket: "spam", confidence: 72 };
   }
 
-  // ── SPAM ──────────────────────────────────────────────────────────────────
-
-  if (count >= 30 && has(e, ["noreply", "no-reply", "donotreply", "bulk", "mass"])) {
-    return { bucket: "spam", confidence: 70 };
+  // ── Step 14: Volume-based fallback ───────────────────────────────────────
+  // Low volume, no person signals, automated address = notification/transactional
+  if (isAutomated) {
+    return count >= 10
+      ? { bucket: "promotion", confidence: 60 }
+      : { bucket: "transactional", confidence: 58 };
   }
 
-  // ── DEFAULT ───────────────────────────────────────────────────────────────
-
-  // Low volume unknown → treat as important (safe default)
-  if (count <= 5) {
-    return { bucket: "important", confidence: 60 };
+  // Low volume non-personal = could be small business, service, or person
+  if (count <= 3) {
+    return { bucket: "important", confidence: 58 };
   }
-  // Medium/high volume unknown → probably promotional
-  return { bucket: "promotion", confidence: 55 };
+
+  // Medium volume with no strong signal = newsletter or promotion
+  if (count <= 12) {
+    return { bucket: "newsletter", confidence: 55 };
+  }
+
+  // High volume with no strong signal = promotion
+  return { bucket: "promotion", confidence: 58 };
 }
