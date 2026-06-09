@@ -126,7 +126,11 @@ export function IntelligenceScreen({ senders, onRescan }: { senders: SenderGroup
       setDoneResult(data);
       setStage("done");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Apply failed");
+      const raw = e instanceof Error ? e.message : "";
+      const friendly = raw.length > 0 && raw.length < 120 && !/pattern|token|unexpected|syntaxerror/i.test(raw)
+        ? raw
+        : "Something went wrong. Please sign out and sign back in.";
+      setError(friendly);
       setStage("dashboard");
     }
   };

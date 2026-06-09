@@ -75,7 +75,17 @@ export function ScanScreen({ onComplete, onError }: Props) {
           setTimeout(() => { if (!cancelled) onComplete(data); }, 700);
         }
       })
-      .catch((e) => { if (!cancelled) onError(e.message ?? "Scan failed"); });
+      .catch((e) => {
+        if (cancelled) return;
+        const raw: string = e?.message ?? "";
+        // Replace cryptic technical errors with something human-readable
+        const friendly = raw.startsWith("Failed to fetch") || raw.startsWith("NetworkError")
+          ? "Could not reach the server. Check your connection and try again."
+          : raw.length > 0 && raw.length < 120 && !/pattern|token|unexpected|syntaxerror/i.test(raw)
+            ? raw
+            : "Something went wrong loading your inbox. Please sign out and sign back in.";
+        onError(friendly);
+      });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
