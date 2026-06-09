@@ -106,11 +106,10 @@ export async function fetchGmailMessages(token: string, limit = 5_000): Promise<
   let pageToken: string | undefined;
 
   while (messages.length < limit) {
-    // Use q:"in:inbox" to bypass Gmail's cache and exclude trashed/moved emails
+    // Use q:"in:inbox" to exclude trashed/moved emails from results
     const params = new URLSearchParams({
       maxResults: "500",
       q: "in:inbox",
-      _ts: String(Date.now()), // cache-bust
     });
     if (pageToken) params.set("pageToken", pageToken);
 
